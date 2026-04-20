@@ -1,0 +1,84 @@
+# Claude Code CLI (Anthropic) — profile provider for ai-revolver.
+#
+# Data sources:
+#   - credential file: ~/.claude/.credentials.json  (plaintext on Linux/Windows;
+#                                                    macOS Keychain with file fallback)
+#   - OAuth refresh:   https://platform.claude.com/v1/oauth/token  (JSON body)
+#   - usage REST:      GET https://api.anthropic.com/api/oauth/{profile,usage}
+#                      requires header `anthropic-beta: oauth-2025-04-20`
+
+name: claude
+version: 1
+
+auth_methods:
+  oauth:
+    credential_file:
+      path: "${HOME}/.claude/.credentials.json"
+      format: json
+      mapping:
+        access_token:  "claudeAiOauth.accessToken"
+        refresh_token: "claudeAiOauth.refreshToken"
+        expires_at:    "claudeAiOauth.expiresAt"
+      grab_fields:
+        - "claudeAiOauth.scopes"
+        - "claudeAiOauth.subscriptionType"
+        - "claudeAiOauth.rateLimitTier"
+        - "organizationUuid"
+      permissions: 0o600
+      atomic_write: true
+      preserve_unknown_fields: true
+
+    # Claude OAuth refresh.
+    # Response: { access_token, refresh_token, expires_in } — seconds, so we
+    # convert to absolute epoch ms via `now_ms_plus_seconds`.
+    token_refresh:
+      url: "https://platform.claude.com/v1/oauth/token"
+      body:
+        grant_type:    "refresh_token"
+        refresh_token: "${credentials.refresh_token}"
+        client_id:     "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+      update:
+        access_token:  "access_token"
+        refresh_token: "refresh_token"
+        expires_at:    "expires_in | now_ms_plus_seconds"
+
+  api_key:
+    env:
+      ANTHROPIC_API_KEY: "${api_key}"
+
+detection:
+  commands: ["claude"]
+  paths: ["${HOME}/.claude/"]
+
+# Live usage — two probes combine into one UsageSnapshot.
+# NOTE: `anthropic-beta` header is REQUIRED, otherwise endpoints return
+# 401 "OAuth authentication is currently not supported".
+#
+# Verified against live responses (2026-04):
+#   utilization:  already a percentage (35.0 == 35%), no scaling needed
+#   resets_at:    ISO 8601 string, use `iso_to_ms` transform
+#   plan:         comes from profile endpoint (organization.organization_type),
+#                 values: "claude_pro" | "claude_max" | "team" | "enterprise"
+usage:
+  probes:
+    # Probe 1 — user profile + plan + email.
+    - url: "https://api.anthropic.com/api/oauth/profile"
+      headers:
+        Authorization:  "Bearer ${credentials.access_token}"
+        anthropic-beta: "oauth-2025-04-20"
+        User-Agent:     "claude-code/2.1.112"
+      map:
+        email: "account.email"
+        plan:  "organization.organization_type"
+
+    # Probe 2 — rate limits (5h + 7d windows).
+    - url: "https://api.anthropic.com/api/oauth/usage"
+      headers:
+        Authorization:  "Bearer ${credentials.access_token}"
+        anthropic-beta: "oauth-2025-04-20"
+        User-Agent:     "claude-code/2.1.112"
+      map:
+        primary.used_percent:   "five_hour.utilization"
+        primary.resets_at:      "five_hour.resets_at | iso_to_ms"
+        secondary.used_percent: "seven_day.utilization"
+        secondary.resets_at:    "seven_day.resets_at | iso_to_ms"

@@ -1,0 +1,57 @@
+# Qwen Code (Alibaba) — profile provider for ai-revolver.
+# Qwen Code is a fork of Gemini CLI, so its auth layout is very similar.
+#
+# Data sources:
+#   - credential file: ~/.qwen/oauth_creds.json  (0600, plaintext JSON)
+#   - OAuth refresh:   endpoint unknown publicly — NOT wired
+#   - usage REST:      none known — no probe in MVP
+#
+# Quirks vs others:
+#   • `expiry_date` is **absolute epoch MS** (same as Gemini, inherited from
+#     the fork). No transform on normalise.
+#   • `resource_url` in the file points to the DashScope endpoint the CLI
+#     should use (`portal.qwen.ai`, `dashscope-intl.aliyuncs.com`, etc.).
+#     Carried as grab_field so switch round-trips correctly.
+#   • API-key mode uses OpenAI-compatible interface → `OPENAI_API_KEY`, not a
+#     `QWEN_API_KEY`. `OPENAI_BASE_URL` must be set alongside, otherwise the
+#     key is silently sent to OpenAI's endpoint. Hence `env_extra`.
+
+name: qwen
+version: 1
+
+auth_methods:
+  oauth:
+    credential_file:
+      path: "${HOME}/.qwen/oauth_creds.json"
+      format: json
+      mapping:
+        access_token:  "access_token"
+        refresh_token: "refresh_token"
+        expires_at:    "expiry_date"
+      grab_fields:
+        - "token_type"
+        - "resource_url"
+      permissions: 0o600
+      atomic_write: true
+      preserve_unknown_fields: true
+
+    # token_refresh: NOT WIRED.
+    # Qwen doesn't publish its OAuth refresh endpoint; no usage probe
+    # exists either, so there's no trigger. If we add a probe later,
+    # capture endpoint + client_id by inspecting the Qwen CLI source.
+
+  api_key:
+    env:
+      OPENAI_API_KEY: "${api_key}"
+    # Critical: without BASE_URL, the key is sent to OpenAI's servers.
+    # DashScope-intl is the international endpoint; use `dashscope.aliyuncs.com`
+    # for mainland China.
+    env_extra:
+      OPENAI_BASE_URL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+
+detection:
+  commands: ["qwen"]
+  paths: ["${HOME}/.qwen/"]
+
+# No `usage:` section — Qwen Code doesn't expose rate-limit REST that we
+# can probe with the OAuth access token alone.

@@ -1,0 +1,87 @@
+# Codex CLI (OpenAI) — profile provider for ai-revolver.
+#
+# Data sources:
+#   - credential file: ~/.codex/auth.json  (plaintext JSON, no keychain)
+#   - OAuth refresh:   https://auth.openai.com/oauth/token  (JSON body)
+#   - usage REST:      GET https://chatgpt.com/wham/usage
+
+name: codex
+version: 1
+
+auth_methods:
+  oauth:
+    credential_file:
+      path: "${HOME}/.codex/auth.json"
+      format: json
+      # mapping: normalised key → dot-path inside the CLI's JSON file.
+      # These become `credentials.*` everywhere (used by ${credentials.x} below).
+      mapping:
+        access_token:  "tokens.access_token"
+        refresh_token: "tokens.refresh_token"
+        id_token:      "tokens.id_token"
+        account_id:    "tokens.account_id"
+      # grab_fields: extra paths to carry along as opaque context
+      # (never used for auth, preserved on switch).
+      grab_fields:
+        - "auth_mode"
+        - "OPENAI_API_KEY"
+        - "last_refresh"
+      permissions: 0o600
+      atomic_write: true
+      preserve_unknown_fields: true
+
+    # OAuth refresh — triggered on-demand when a usage probe returns 401.
+    # Codex uses OpenAI's standard OAuth refresh with a hardcoded client_id.
+    # Response shape: { access_token, refresh_token, id_token } — no expires_in.
+    token_refresh:
+      url: "https://auth.openai.com/oauth/token"
+      body:
+        client_id:     "app_EMoamEEZ73f0CkXaXp7hrann"
+        grant_type:    "refresh_token"
+        refresh_token: "${credentials.refresh_token}"
+      # update: normKey → "response.path" (optionally `| transform`)
+      update:
+        access_token:  "access_token"
+        refresh_token: "refresh_token"
+        id_token:      "id_token"
+
+  api_key:
+    env:
+      OPENAI_API_KEY: "${api_key}"
+
+detection:
+  commands: ["codex"]
+  paths: ["${HOME}/.codex/"]
+
+# Live rate-limit probes for `airev codex usage`.
+# Each probe is an HTTP GET; fields are extracted into the canonical
+# UsageSnapshot shape: { email?, plan?, primary?, secondary? }.
+#
+# Transforms available after `|`:
+#   epoch_seconds_to_ms    absolute epoch seconds  → epoch ms
+#   now_ms_plus_seconds    relative seconds        → now + n*1000
+#   iso_to_ms              ISO 8601 string         → epoch ms
+#   jwt_claim:<name>       JWT string              → payload claim by name
+usage:
+  probes:
+    # Note: the `/backend-api` prefix is auto-applied by the Codex Rust
+    # client when base = chatgpt.com. We must include it explicitly here —
+    # hitting the bare `/wham/usage` returns 403 from the edge router.
+    - url: "https://chatgpt.com/backend-api/wham/usage"
+      headers:
+        Authorization:      "Bearer ${credentials.access_token}"
+        ChatGPT-Account-Id: "${credentials.account_id}"
+        User-Agent:         "codex-cli"
+      # Response carries both windows' durations as `limit_window_seconds`
+      # (18000=5h, 604800=7d for plus/pro). Renderer labels windows from
+      # this field — no hardcoded "5h"/"7d" guesses.
+      # `email` + `plan_type` are top-level fields (no need to decode JWT).
+      map:
+        email:                     "email"
+        plan:                      "plan_type"
+        primary.used_percent:      "rate_limit.primary_window.used_percent"
+        primary.resets_at:         "rate_limit.primary_window.reset_at | epoch_seconds_to_ms"
+        primary.window_seconds:    "rate_limit.primary_window.limit_window_seconds"
+        secondary.used_percent:    "rate_limit.secondary_window.used_percent"
+        secondary.resets_at:       "rate_limit.secondary_window.reset_at | epoch_seconds_to_ms"
+        secondary.window_seconds:  "rate_limit.secondary_window.limit_window_seconds"
