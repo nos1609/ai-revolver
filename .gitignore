@@ -1,6 +1,7 @@
 node_modules/
 dist/
 tmp/
+reports/
 
 *.log
 *.tmp
