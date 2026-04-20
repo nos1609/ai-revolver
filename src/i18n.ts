@@ -52,7 +52,16 @@ function detectLang(): Lang {
 
 export const LANG: Lang = detectLang();
 
+// Bilingual override (borrowed from wg-atelier): when AIREV_BILINGUAL=1,
+// `tr()` returns "ru / en" inline. Useful for:
+//   - capturing screenshots/docs that must serve both audiences at once
+//   - verifying the RU/EN pair is consistent without re-running the CLI
+//     under two different locales
+// Not a user-facing default — it makes output noisy.
+const FORCE_BILINGUAL = process.env.AIREV_BILINGUAL === "1";
+
 export function tr(ru: string, en: string): string {
+  if (FORCE_BILINGUAL) return `${ru} / ${en}`;
   return LANG === "ru" ? ru : en;
 }
 

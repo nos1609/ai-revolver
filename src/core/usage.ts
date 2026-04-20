@@ -13,7 +13,7 @@ import { fileExists } from "../platform/fs.js";
 // ── Helpers ──────────────────────────────────────────────
 
 /** Nested get by "a.b.c" path. */
-function getByPath(obj: unknown, dotPath: string): unknown {
+export function getByPath(obj: unknown, dotPath: string): unknown {
   let cur: unknown = obj;
   for (const key of dotPath.split(".")) {
     if (cur == null || typeof cur !== "object") return undefined;
@@ -23,7 +23,7 @@ function getByPath(obj: unknown, dotPath: string): unknown {
 }
 
 /** Nested set by "a.b.c" path, creating intermediate objects. */
-function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
+export function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
   const keys = dotPath.split(".");
   let cur: Record<string, unknown> = obj;
   for (let i = 0; i < keys.length - 1; i++) {
@@ -35,7 +35,7 @@ function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown
 }
 
 /** `${credentials.foo}` → credentials.foo. Literal otherwise. */
-function interpolate(template: string, credentials: Record<string, unknown>): string {
+export function interpolate(template: string, credentials: Record<string, unknown>): string {
   return template.replace(/\$\{credentials\.([a-zA-Z0-9_]+)\}/g, (_, key: string) => {
     const v = credentials[key];
     return v == null ? "" : String(v);
@@ -70,7 +70,7 @@ function decodeJwtPayload(jwt: unknown): Record<string, unknown> | undefined {
 }
 
 /** Apply minimal transform DSL: "path" or "path | transform[:arg]". */
-function applyMapExpr(response: unknown, expr: string): unknown {
+export function applyMapExpr(response: unknown, expr: string): unknown {
   const [rawPath, transformExpr] = expr.split("|").map((s) => s.trim());
   const value = getByPath(response, rawPath);
   if (value === undefined) return undefined;
@@ -279,7 +279,7 @@ async function tryReadLiveCredentials(
  * match. Values are strings/numbers/booleans in practice; deep objects would
  * need JSON compare but none of our providers nest credentials.
  */
-function credsEqual(
+export function credsEqual(
   a: Record<string, unknown>,
   b: Record<string, unknown>,
 ): boolean {
