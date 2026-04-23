@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
 import { readCredentials } from "../providers/reader.js";
-import { addProfile, getProfile, setActive } from "../core/registry.js";
+import { addProfile, clearStale, getProfile, setActive } from "../core/registry.js";
 import { openVault } from "../vault/factory.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
@@ -85,6 +85,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
     credentials,
     grab_data: grabData,
   });
+  await clearStale(providerName, profile.id);
 
   if (existing) {
     // Update path: don't touch active — user asked to refresh creds,

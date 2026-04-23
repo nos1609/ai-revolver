@@ -31,6 +31,7 @@ airev import backup.json --replace --restore-active
 - **Vault** — зашифрованное хранилище, ключ — биометрия ОС (Windows Hello / Touch ID / DBus).
 - **Switch** — мгновенный: подменяет CLI-файл (`~/.codex/auth.json`, `~/.claude/.credentials.json`) атомарно, без перезапуска клиента.
 - **Usage** — читает живые rate-limits напрямую из API провайдера, при 401 сам рефрешит токен (и для неактивных профилей пишет только в vault — не трогая файл активного).
+- **Claude / rotating creds** — для active-профиля `usage` сначала читает системный `~/.claude/.credentials.json`, а если vault-креды признаны мёртвыми, профиль помечается как `stale` и больше не дёргается автоматически, пока его не обновят через `airev claude grab <name>`.
 
 ## Поддерживаемые провайдеры
 

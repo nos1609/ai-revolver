@@ -13,6 +13,10 @@ function activePath(): string {
   return path.join(getConfigDir(), "active.json");
 }
 
+function stalePath(): string {
+  return path.join(getConfigDir(), "stale.json");
+}
+
 function generateId(): string {
   return "prof_" + crypto.randomBytes(6).toString("hex");
 }
@@ -145,4 +149,47 @@ export async function getActive(provider: string): Promise<string | null> {
 export async function getAllActive(): Promise<Record<string, string>> {
   const data = await loadActive();
   return data.active;
+}
+
+// ── Stale tracking ───────────────────────────────────────
+
+type StaleData = {
+  /** provider → profile id */
+  stale: Record<string, string>;
+};
+
+async function loadStale(): Promise<StaleData> {
+  const p = stalePath();
+  if (!(await fileExists(p))) {
+    return { stale: {} };
+  }
+  return readJsonFile<StaleData>(p);
+}
+
+async function saveStale(data: StaleData): Promise<void> {
+  await writeJsonFile(stalePath(), data);
+}
+
+export async function setStale(provider: string, profileId: string): Promise<void> {
+  const data = await loadStale();
+  data.stale[provider] = profileId;
+  await saveStale(data);
+}
+
+export async function clearStale(provider: string, profileId?: string): Promise<void> {
+  const data = await loadStale();
+  if (!profileId || data.stale[provider] === profileId) {
+    delete data.stale[provider];
+    await saveStale(data);
+  }
+}
+
+export async function getStale(provider: string): Promise<string | null> {
+  const data = await loadStale();
+  return data.stale[provider] ?? null;
+}
+
+export async function getAllStale(): Promise<Record<string, string>> {
+  const data = await loadStale();
+  return data.stale;
 }

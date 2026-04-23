@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { listProviders, loadProvider } from "../providers/loader.js";
-import { getAllActive, listProfiles } from "../core/registry.js";
+import { clearStale, getAllActive, getAllStale, listProfiles, setStale } from "../core/registry.js";
 import { openVault } from "../vault/factory.js";
 import { fetchUsage, persistCredentials } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
@@ -75,6 +75,11 @@ function renderSnapshot(snap: UsageSnapshot): string[] {
 interface Target {
   profile: Profile;
   isActive: boolean;
+  isStale: boolean;
+}
+
+function isDeadRefreshError(error?: string): boolean {
+  return error === "invalid_grant" || error === "Refresh token not found or invalid";
 }
 
 /**
@@ -91,13 +96,15 @@ async function resolveTargets(
 ): Promise<Target[]> {
   const profiles = (await listProfiles()).filter((p) => p.auth_type === "oauth");
   const active = await getAllActive();
+  const stale = await getAllStale();
   const isActive = (p: Profile) => active[p.provider] === p.id;
+  const isStale = (p: Profile) => stale[p.provider] === p.id;
 
   let matching = profiles;
   if (providerFilter) matching = matching.filter((p) => p.provider === providerFilter);
   if (profileFilter) matching = matching.filter((p) => p.name === profileFilter);
 
-  return matching.map((p) => ({ profile: p, isActive: isActive(p) }));
+  return matching.map((p) => ({ profile: p, isActive: isActive(p), isStale: isStale(p) }));
 }
 
 // ── Command ──────────────────────────────────────────────
@@ -147,7 +154,7 @@ export async function usage(
   // Column layout mirrors `list`: marker first, then provider, then name.
   // Continuation lines align under the snapshot column (after marker + provider + name gutter).
   const CONT_INDENT = "    " + " ".repeat(10) + " " + " ".repeat(20) + " "; // 2 + marker(1) + sp + prov(10) + sp + name(20) + sp
-  for (const { profile, isActive } of targets) {
+  for (const { profile, isActive, isStale } of targets) {
     const provider = await loadProvider(profile.provider);
     const marker = isActive ? chalk.green("*") : " ";
     const head =
@@ -156,6 +163,13 @@ export async function usage(
 
     if (!provider.usage) {
       console.log(`${head} ${chalk.dim(tr("— usage-probes не настроены", "— no usage probes configured"))}`);
+      continue;
+    }
+
+    if (isStale && !isActive) {
+      console.log(
+        `${head} ${chalk.yellow(tr("— stale credentials; сначала обнови через grab", "— stale credentials; refresh via grab first"))}`,
+      );
       continue;
     }
 
@@ -180,6 +194,10 @@ export async function usage(
           isActive,
         );
         await vault.put(updated);
+      }
+
+      if (!result.refreshError) {
+        await clearStale(profile.provider, profile.id);
       }
 
       const lines = renderSnapshot(result.snapshot);
@@ -213,6 +231,9 @@ export async function usage(
       }
       if (result.refreshError) {
         const { status, error } = result.refreshError;
+        if (isDeadRefreshError(error)) {
+          await setStale(profile.provider, profile.id);
+        }
         const detail = error ? ` (${error})` : "";
         console.log(
           chalk.yellow(
