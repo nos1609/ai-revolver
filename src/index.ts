@@ -9,6 +9,7 @@ import { rename } from "./commands/rename.js";
 import { envGen } from "./commands/env-gen.js";
 import { exportProfiles } from "./commands/export.js";
 import { importProfiles } from "./commands/import.js";
+import { vaultCommand } from "./commands/vault.js";
 import { printActionHelp, printProviderHelp, hasActionHelp } from "./commands/help.js";
 import { listProviders } from "./providers/loader.js";
 import { tr, trf } from "./i18n.js";
@@ -37,9 +38,11 @@ function buildHelp(): string {
   airev env [--shell <shell>]             Env-экспорты для shell-хука
   airev provider list                     Доступные провайдеры
 
-  airev export [<out>] [--plaintext]      Экспорт всех профилей + vault-записей (по умолчанию encrypted)
-  airev import <file> [--replace]         Импорт профилей; --replace перезаписывает конфликты
-                     [--restore-active]   Также восстановить active-map из файла`,
+  airev vault path                        Пути registry / active / stale / vault
+  airev vault status                      Backend vault-а
+  airev vault export [<out>]              Экспорт registry+vault (encrypted по умолчанию)
+  airev vault import <file>               Импорт registry+vault
+  airev vault migrate <keyring|file>      Заглушка будущей миграции backend-а`,
     `  airev <provider> grab <name>            Grab current credentials as profile
   airev <provider> switch <name>          Switch to a profile
   airev <provider> rename <old> <new>     Rename a profile
@@ -54,9 +57,11 @@ function buildHelp(): string {
   airev env [--shell <shell>]             Output env exports for shell hook
   airev provider list                     List available providers
 
-  airev export [<out>] [--plaintext]      Export all profiles + vault entries (encrypted by default)
-  airev import <file> [--replace]         Import profiles; --replace overwrites name+provider conflicts
-                     [--restore-active]   Also restore the active-profile map from the file`,
+  airev vault path                        Show registry / active / stale / vault paths
+  airev vault status                      Show vault backend
+  airev vault export [<out>]              Export registry+vault (encrypted by default)
+  airev vault import <file>               Import registry+vault
+  airev vault migrate <keyring|file>      Placeholder for future backend migration`,
   );
 
   const options = tr(
@@ -111,7 +116,7 @@ ${perLevel}
 `;
 }
 
-const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "export", "import"]);
+const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "vault", "export", "import"]);
 const PROVIDER_VERBS = new Set(["grab", "switch", "rename", "drop", "list", "status", "usage"]);
 
 function die(msg: string, hint?: string): never {
@@ -150,6 +155,11 @@ async function main() {
   if (wantsHelp) {
     const providers = await listProviders();
 
+    // `airev vault <action> -h`
+    if (first === "vault" && second && hasActionHelp(second)) {
+      printActionHelp(second);
+      return;
+    }
     // `airev <prov> <action> -h`
     if (providers.includes(first) && second && hasActionHelp(second)) {
       printActionHelp(second, first);
@@ -195,6 +205,14 @@ async function main() {
       return usage(undefined, second);
     }
     if (first === "env") return envGen(shell);
+
+    if (first === "vault") {
+      return vaultCommand(second, third, {
+        plaintext: args.includes("--plaintext"),
+        replace: args.includes("--replace"),
+        restoreActive: args.includes("--restore-active"),
+      });
+    }
 
     if (first === "export") {
       const plaintext = args.includes("--plaintext");

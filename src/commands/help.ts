@@ -168,7 +168,7 @@ const ACTIONS: Record<string, ActionHelp> = {
   },
 
   export: {
-    synopsis: () => `airev export [<out>] [--plaintext]`,
+    synopsis: () => `airev vault export [<out>] [--plaintext]`,
     description: () =>
       tr(
         "Экспортирует все профили + vault-записи + active-map в один JSON-файл.\n" +
@@ -187,14 +187,14 @@ const ACTIONS: Record<string, ActionHelp> = {
       ),
     ],
     examples: () => [
-      `airev export                            ${tr("# → ./airev-export-<ts>.json (encrypted)", "# → ./airev-export-<ts>.json (encrypted)")}`,
-      `airev export backup.json                ${tr("# свой путь, encrypted", "# custom path, encrypted")}`,
-      `airev export backup.json --plaintext    ${tr("# unencrypted — только для отладки", "# unencrypted — for debugging only")}`,
+      `airev vault export                      ${tr("# → ./airev-export-<ts>.json (encrypted)", "# → ./airev-export-<ts>.json (encrypted)")}`,
+      `airev vault export backup.json          ${tr("# свой путь, encrypted", "# custom path, encrypted")}`,
+      `airev vault export backup.json --plaintext ${tr("# unencrypted — только для отладки", "# unencrypted — for debugging only")}`,
     ],
   },
 
   import: {
-    synopsis: () => `airev import <file> [--replace] [--restore-active]`,
+    synopsis: () => `airev vault import <file> [--replace] [--restore-active]`,
     description: () =>
       tr(
         "Импортирует export-файл. Стратегия при конфликте по (name, provider):\n" +
@@ -217,9 +217,26 @@ const ACTIONS: Record<string, ActionHelp> = {
       ),
     ],
     examples: () => [
-      `airev import backup.json                          ${tr("# merge, конфликты пропускаем", "# merge, skip conflicts")}`,
-      `airev import backup.json --replace                ${tr("# перезаписывать при конфликте", "# overwrite on conflict")}`,
-      `airev import backup.json --restore-active         ${tr("# вместе с active-map", "# also restore which was active")}`,
+      `airev vault import backup.json                    ${tr("# merge, конфликты пропускаем", "# merge, skip conflicts")}`,
+      `airev vault import backup.json --replace          ${tr("# перезаписывать при конфликте", "# overwrite on conflict")}`,
+      `airev vault import backup.json --restore-active   ${tr("# вместе с active-map", "# also restore which was active")}`,
+    ],
+  },
+
+  vault: {
+    synopsis: () => `airev vault <path|status|passwd|migrate|export|import>`,
+    description: () =>
+      tr(
+        "Управление локальным vault namespace: пути служебных файлов, backend,\n" +
+          "экспорт/импорт и будущая миграция между backend-ами.",
+        "Manage the local vault namespace: state-file paths, backend, export/import,\n" +
+          "and future migration between backends.",
+      ),
+    examples: () => [
+      `airev vault path                       ${tr("# показать config/registry/active/stale/vault paths", "# show config/registry/active/stale/vault paths")}`,
+      `airev vault status                     ${tr("# показать активный backend", "# show active backend")}`,
+      `airev vault passwd                     ${tr("# смена пароля file-vault (пока stub)", "# change file-vault password (stub for now)")}`,
+      `airev vault migrate keyring            ${tr("# заглушка будущей миграции", "# future migration placeholder")}`,
     ],
   },
 };

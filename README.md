@@ -19,10 +19,13 @@ airev codex usage                  # все профили одного пров
 airev env --shell powershell       # env-экспорты для shell-хука
 airev provider list                # доступные провайдеры
 
-airev export backup.json           # зашифрованный бэкап registry+vault (пароль в промпте)
-airev export backup.json --plaintext  # без шифрования (⚠ живые токены в файле)
-airev import backup.json           # восстановить; конфликты по name+provider → skip
-airev import backup.json --replace --restore-active
+airev vault path                   # где лежат registry / active / stale / vault
+airev vault status                 # какой backend используется
+airev vault export backup.json     # зашифрованный бэкап registry+vault (пароль в промпте)
+airev vault export backup.json --plaintext  # без шифрования (⚠ живые токены в файле)
+airev vault import backup.json     # восстановить; конфликты по name+provider → skip
+airev vault import backup.json --replace --restore-active
+airev vault migrate keyring        # заглушка будущей миграции backend-а
 ```
 
 ## Что такое
@@ -33,6 +36,7 @@ airev import backup.json --replace --restore-active
 - **Usage** — читает живые rate-limits напрямую из API провайдера, при 401 сам рефрешит токен (и для неактивных профилей пишет только в vault — не трогая файл активного).
 - **Claude / rotating creds** — для active-профиля `usage` сначала читает системный `~/.claude/.credentials.json`, а если vault-креды признаны мёртвыми, профиль помечается как `stale` и больше не дёргается автоматически, пока его не обновят через `airev claude grab <name>`.
 - **Stale state** — `stale.json` локальный кэш наблюдений, а не часть профиля: он не экспортируется и не импортируется; успешный `grab` снимает stale-флаг.
+- **Vault commands** — `vault export/import` основной интерфейс переносимости; старые top-level `export/import` оставлены как совместимые алиасы.
 
 ## Поддерживаемые провайдеры
 
