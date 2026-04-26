@@ -3,7 +3,7 @@ import path from "node:path";
 import { writeFile } from "node:fs/promises";
 import { openVault } from "../vault/factory.js";
 import { buildExport, serializeExport } from "../core/export.js";
-import { promptPassword } from "../vault/prompt.js";
+import { promptTransportPassword, promptTransportPasswordConfirm } from "../vault/prompt.js";
 import { tr, trf } from "../i18n.js";
 
 interface ExportOptions {
@@ -25,7 +25,7 @@ export async function exportProfiles(opts: ExportOptions = {}): Promise<void> {
   // Resolve password first so we never fail *after* decrypting the vault.
   let password: string | undefined;
   if (!opts.plaintext) {
-    password = opts.password ?? (await promptPassword(tr("  🔐 Пароль export: ", "  🔐 Export password: ")));
+    password = opts.password ?? (await promptTransportPassword("export"));
     if (!password) {
       console.error(chalk.red(tr("Для encrypted-export нужен пароль.", "Password required for encrypted export.")));
       console.error(
@@ -39,7 +39,7 @@ export async function exportProfiles(opts: ExportOptions = {}): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    const confirm = opts.password ?? (await promptPassword(tr("  🔐 Повтори пароль:    ", "  🔐 Confirm password:  ")));
+    const confirm = opts.password ?? (await promptTransportPasswordConfirm());
     if (confirm !== password) {
       console.error(chalk.red(tr("Пароли не совпадают.", "Passwords don't match.")));
       process.exitCode = 1;

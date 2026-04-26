@@ -3,7 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { openVault } from "../vault/factory.js";
 import { applyImport, parseExport, isEncryptedExport, ImportError } from "../core/export.js";
-import { promptPassword } from "../vault/prompt.js";
+import { promptTransportPassword } from "../vault/prompt.js";
 import { tr, trf } from "../i18n.js";
 
 interface ImportOptions {
@@ -31,7 +31,7 @@ export async function importProfiles(filePath: string, opts: ImportOptions = {})
   // unnecessary prompt when the user exports plaintext.
   let password = opts.password;
   if (isEncryptedExport(raw) && !password) {
-    password = await promptPassword(tr("  🔐 Пароль import: ", "  🔐 Import password: "));
+    password = await promptTransportPassword("import");
   }
 
   let payload;
@@ -44,7 +44,7 @@ export async function importProfiles(filePath: string, opts: ImportOptions = {})
     return;
   }
 
-  const vault = await openVault();
+  const vault = await openVault({ confirmNewFilePassword: true });
   const report = await applyImport(payload, vault, {
     replace: opts.replace,
     restoreActive: opts.restoreActive,
