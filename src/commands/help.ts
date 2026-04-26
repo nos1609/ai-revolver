@@ -172,11 +172,11 @@ const ACTIONS: Record<string, ActionHelp> = {
     description: () =>
       tr(
         "Экспортирует все профили + vault-записи + active-map в один JSON-файл.\n" +
-          "По умолчанию шифрование (AES-256-GCM + scrypt, пароль спрашивается).\n" +
+          "По умолчанию шифрование (AES-256-GCM + scrypt, transport password спрашивается).\n" +
           "--plaintext пишет живые токены открытым текстом — файл 0600, печатается\n" +
           "предупреждение; не коммитить, не расшаривать, удалять после переноса.",
         "Export all profiles + vault entries + active map to a single JSON file.\n" +
-          "Encrypted by default (AES-256-GCM + scrypt, password prompted).\n" +
+          "Encrypted by default (AES-256-GCM + scrypt, transport password prompted).\n" +
           "--plaintext writes live tokens in the clear — file is 0600, a warning is\n" +
           "printed; do not commit, do not share, delete after transfer.",
       ),
@@ -198,10 +198,16 @@ const ACTIONS: Record<string, ActionHelp> = {
     description: () =>
       tr(
         "Импортирует export-файл. Стратегия при конфликте по (name, provider):\n" +
+          "transport password расшифровывает только файл переноса; если локальный\n" +
+          "backend = encrypted-file и vault.enc создаётся впервые, отдельно\n" +
+          "спрашивается новый пароль локального vault-а.\n" +
           "  default      пропустить существующий профиль молча\n" +
           "  --replace    перезаписать credentials (id берётся ЛОКАЛЬНЫЙ)\n" +
           "Коллизии по id при разных name/provider всегда пропускаются.",
         "Import an export file. Conflict strategy by (name, provider):\n" +
+          "The transport password decrypts only the transfer file; if the local\n" +
+          "backend is encrypted-file and vault.enc is created for the first time,\n" +
+          "a separate new local vault password is prompted.\n" +
           "  default      skip existing profiles silently\n" +
           "  --replace    overwrite existing credentials (keeps LOCAL id)\n" +
           "ID collisions under different name/provider are always skipped.",
@@ -223,20 +229,55 @@ const ACTIONS: Record<string, ActionHelp> = {
     ],
   },
 
+  migrate: {
+    synopsis: () => `airev vault migrate <keyring|file> [--yes|--keep-source] [--replace]`,
+    description: () =>
+      tr(
+        "Локально переносит vault entries между backend-ами без export-файла:\n" +
+          "copy → verify target → optional delete-source. Без --yes/--keep-source\n" +
+          "в интерактивном терминале спрашивает, удалять ли source после verify.\n" +
+          "В non-TTY режиме нужен явный --yes или --keep-source.",
+        "Locally migrates vault entries between backends without an export file:\n" +
+          "copy → verify target → optional delete-source. Without --yes/--keep-source\n" +
+          "in an interactive terminal, prompts whether to delete source after verify.\n" +
+          "In non-TTY mode, explicit --yes or --keep-source is required.",
+      ),
+    options: () => [
+      tr(
+        "--yes              После успешной verify удалить source entries без prompt",
+        "--yes              Delete source entries after successful verify without prompt",
+      ),
+      tr(
+        "--keep-source      После успешной copy+verify оставить source entries",
+        "--keep-source      Keep source entries after successful copy+verify",
+      ),
+      tr(
+        "--replace          Разрешить overwrite существующих entries в target",
+        "--replace          Allow overwriting existing entries in target",
+      ),
+    ],
+    examples: () => [
+      `airev vault migrate file --keep-source     ${tr("# создать fallback vault.enc, source оставить", "# create fallback vault.enc, keep source")}`,
+      `airev vault migrate file --yes            ${tr("# перейти keyring → file после verify", "# switch keyring → file after verify")}`,
+      `airev vault migrate keyring --yes         ${tr("# перейти file → keyring после verify", "# switch file → keyring after verify")}`,
+    ],
+  },
+
   vault: {
     synopsis: () => `airev vault <path|status|passwd|migrate|export|import>`,
     description: () =>
       tr(
         "Управление локальным vault namespace: пути служебных файлов, backend,\n" +
-          "экспорт/импорт и будущая миграция между backend-ами.",
+          "экспорт/импорт и безопасная миграция между backend-ами.",
         "Manage the local vault namespace: state-file paths, backend, export/import,\n" +
-          "and future migration between backends.",
+          "and safe migration between backends.",
       ),
     examples: () => [
       `airev vault path                       ${tr("# показать config/registry/active/stale/vault paths", "# show config/registry/active/stale/vault paths")}`,
       `airev vault status                     ${tr("# показать активный backend", "# show active backend")}`,
       `airev vault passwd                     ${tr("# смена пароля file-vault (пока stub)", "# change file-vault password (stub for now)")}`,
-      `airev vault migrate keyring            ${tr("# заглушка будущей миграции", "# future migration placeholder")}`,
+      `airev vault migrate file --keep-source ${tr("# copy+verify, source оставить", "# copy+verify, keep source")}`,
+      `airev vault migrate keyring --yes      ${tr("# copy+verify, затем удалить source", "# copy+verify, then delete source")}`,
     ],
   },
 };

@@ -42,7 +42,7 @@ function buildHelp(): string {
   airev vault status                      Backend vault-а
   airev vault export [<out>]              Экспорт registry+vault (encrypted по умолчанию)
   airev vault import <file>               Импорт registry+vault
-  airev vault migrate <keyring|file>      Заглушка будущей миграции backend-а`,
+  airev vault migrate <keyring|file>      Миграция backend-а: copy → verify → optional delete-source`,
     `  airev <provider> grab <name>            Grab current credentials as profile
   airev <provider> switch <name>          Switch to a profile
   airev <provider> rename <old> <new>     Rename a profile
@@ -61,7 +61,7 @@ function buildHelp(): string {
   airev vault status                      Show vault backend
   airev vault export [<out>]              Export registry+vault (encrypted by default)
   airev vault import <file>               Import registry+vault
-  airev vault migrate <keyring|file>      Placeholder for future backend migration`,
+  airev vault migrate <keyring|file>      Backend migration: copy → verify → optional delete-source`,
   );
 
   const options = tr(
