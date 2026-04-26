@@ -2,12 +2,15 @@ import chalk from "chalk";
 import type { VaultStore } from "./store.js";
 import { KeyringVault } from "./keyring-vault.js";
 import { EncryptedFileVault } from "./encrypted-file.js";
-import { promptPassword } from "./prompt.js";
+import { promptExistingVaultPassword, promptNewVaultPassword } from "./prompt.js";
 import { winVerifyIdentity, winVerifyAvailable } from "./keyring-win.js";
+import { tr } from "../i18n.js";
 
 export interface VaultOpenOptions {
   /** Skip identity verification (e.g. for grab — user is already proving they own the session). */
   skipVerify?: boolean;
+  /** Confirm password when fallback creates a new encrypted-file vault. */
+  confirmNewFilePassword?: boolean;
 }
 
 /**
@@ -32,10 +35,24 @@ export async function openVault(opts: VaultOpenOptions = {}): Promise<VaultStore
   }
 
   // Fallback: password prompt
-  console.error(chalk.dim("  OS keyring unavailable, falling back to master password."));
-  const password = await promptPassword("  🔐 Master password: ");
+  console.error(chalk.dim(tr(
+    "  OS keyring недоступен, fallback на пароль локального vault-а.",
+    "  OS keyring unavailable, falling back to local vault password.",
+  )));
+  const fileExists = await EncryptedFileVault.exists();
+  const password = opts.confirmNewFilePassword && !fileExists
+    ? await promptConfirmedNewVaultPassword()
+    : await promptExistingVaultPassword();
   if (!password) {
-    throw new Error("Password required.");
+    throw new Error(tr("Пароль обязателен.", "Password required."));
   }
   return new EncryptedFileVault(password);
+}
+
+async function promptConfirmedNewVaultPassword(): Promise<string> {
+  const { password, confirm } = await promptNewVaultPassword();
+  if (password !== confirm) {
+    throw new Error(tr("Пароли локального vault-а не совпадают.", "Local vault passwords do not match."));
+  }
+  return password;
 }

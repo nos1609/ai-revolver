@@ -16,8 +16,16 @@ export class EncryptedFileVault implements VaultStore {
   private password: string;
   private cache: VaultData | null = null;
 
+  static path(): string {
+    return path.join(getConfigDir(), "vault.enc");
+  }
+
+  static async exists(): Promise<boolean> {
+    return fileExists(EncryptedFileVault.path());
+  }
+
   constructor(password: string) {
-    this.filePath = path.join(getConfigDir(), "vault.enc");
+    this.filePath = EncryptedFileVault.path();
     this.password = password;
   }
 
