@@ -7,11 +7,12 @@ const promptState = vi.hoisted(() => ({
   existing: vi.fn<() => Promise<string>>(),
   nextNewPassword: "new-pw",
   nextNewConfirm: "new-pw",
+  keyringAvailable: false,
 }));
 
 vi.mock("../../src/vault/keyring-vault.js", () => ({
   KeyringVault: class {
-    static isAvailable = vi.fn(async () => false);
+    static isAvailable = vi.fn(async () => promptState.keyringAvailable);
   },
 }));
 
@@ -47,6 +48,7 @@ beforeEach(async () => {
   promptState.existing.mockResolvedValue("existing-pw");
   promptState.nextNewPassword = "new-pw";
   promptState.nextNewConfirm = "new-pw";
+  promptState.keyringAvailable = false;
 });
 
 afterEach(async () => {
@@ -89,5 +91,33 @@ describe("openVault encrypted-file fallback", () => {
     const { openVault } = await importFactory();
 
     await expect(openVault({ confirmNewFilePassword: true })).rejects.toThrow(/match|совпад/i);
+  });
+});
+
+describe("openVaultBackend", () => {
+  it("opens encrypted-file backend explicitly with new password confirmation", async () => {
+    const prompt = await import("../../src/vault/prompt.js");
+    const { openVaultBackend } = await importFactory();
+
+    await openVaultBackend("encrypted-file", { confirmNewFilePassword: true });
+
+    expect(prompt.promptNewVaultPassword).toHaveBeenCalledTimes(1);
+    expect(promptState.existing).not.toHaveBeenCalled();
+  });
+
+  it("opens keyring backend explicitly when available", async () => {
+    promptState.keyringAvailable = true;
+    const { openVaultBackend } = await importFactory();
+
+    const vault = await openVaultBackend("keyring", { skipVerify: true });
+
+    expect(vault).toBeTruthy();
+    expect(promptState.existing).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicit keyring backend when unavailable", async () => {
+    const { openVaultBackend } = await importFactory();
+
+    await expect(openVaultBackend("keyring", { skipVerify: true })).rejects.toThrow(/unavailable|недоступ/i);
   });
 });
