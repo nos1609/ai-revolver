@@ -211,6 +211,8 @@ async function main() {
         plaintext: args.includes("--plaintext"),
         replace: args.includes("--replace"),
         restoreActive: args.includes("--restore-active"),
+        yes: args.includes("--yes"),
+        keepSource: args.includes("--keep-source"),
       });
     }
 
