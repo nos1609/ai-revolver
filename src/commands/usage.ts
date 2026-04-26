@@ -78,8 +78,14 @@ interface Target {
   isStale: boolean;
 }
 
-function isDeadRefreshError(error?: string): boolean {
-  return error === "invalid_grant" || error === "Refresh token not found or invalid";
+export function isDeadRefreshError(status: number, error?: string): boolean {
+  const normalized = (error ?? "").toLowerCase();
+  return (
+    normalized === "invalid_grant" ||
+    normalized === "refresh token not found or invalid" ||
+    normalized.includes("invalid_grant") ||
+    (status === 400 && normalized.includes("refresh token"))
+  );
 }
 
 /**
@@ -96,9 +102,9 @@ async function resolveTargets(
 ): Promise<Target[]> {
   const profiles = (await listProfiles()).filter((p) => p.auth_type === "oauth");
   const active = await getAllActive();
-  const stale = await getAllStale();
+  const stale = new Set(await getAllStale());
   const isActive = (p: Profile) => active[p.provider] === p.id;
-  const isStale = (p: Profile) => stale[p.provider] === p.id;
+  const isStale = (p: Profile) => stale.has(p.id);
 
   let matching = profiles;
   if (providerFilter) matching = matching.filter((p) => p.provider === providerFilter);
@@ -197,7 +203,7 @@ export async function usage(
       }
 
       if (!result.refreshError) {
-        await clearStale(profile.provider, profile.id);
+        await clearStale(profile.id);
       }
 
       const lines = renderSnapshot(result.snapshot);
@@ -231,8 +237,8 @@ export async function usage(
       }
       if (result.refreshError) {
         const { status, error } = result.refreshError;
-        if (isDeadRefreshError(error)) {
-          await setStale(profile.provider, profile.id);
+        if (isDeadRefreshError(status, error)) {
+          await setStale(profile.id);
         }
         const detail = error ? ` (${error})` : "";
         console.log(

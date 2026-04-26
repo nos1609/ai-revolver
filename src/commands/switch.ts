@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
-import { clearStale, getProfile, getStale, setActive } from "../core/registry.js";
+import { clearStale, getProfile, isStale, setActive } from "../core/registry.js";
 import { routeSwitch } from "../core/router.js";
 import { openVault } from "../vault/factory.js";
 import { resolveTemplatePath } from "../platform/index.js";
@@ -18,8 +18,7 @@ export async function switchProfile(providerName: string, profileName: string): 
     );
   }
 
-  const staleId = await getStale(providerName);
-  if (staleId === profile.id) {
+  if (await isStale(profile.id)) {
     throw new Error(
       trf(
         `Профиль "{n}" помечен как stale. Сначала обнови его через 'airev {p} grab {n}' или перелогинься в CLI.`,
@@ -61,6 +60,6 @@ export async function switchProfile(providerName: string, profileName: string): 
   }
 
   await setActive(profile.provider, profile.id);
-  await clearStale(profile.provider, profile.id);
+  await clearStale(profile.id);
   console.log(chalk.green(trf(`  ✓ Активный: {p} → {n}`, `  ✓ Active: {p} → {n}`, { p: providerName, n: profileName })));
 }

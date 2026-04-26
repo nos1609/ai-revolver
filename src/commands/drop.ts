@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { getProfile, removeProfile } from "../core/registry.js";
+import { clearStale, getProfile, removeProfile } from "../core/registry.js";
 import { openVault } from "../vault/factory.js";
 import { trf } from "../i18n.js";
 
@@ -17,6 +17,7 @@ export async function drop(providerName: string, profileName: string): Promise<v
 
   const vault = await openVault();
   await vault.remove(profile.id);
+  await clearStale(profile.id);
   await removeProfile(profileName, providerName);
 
   console.log(

@@ -154,42 +154,47 @@ export async function getAllActive(): Promise<Record<string, string>> {
 // ── Stale tracking ───────────────────────────────────────
 
 type StaleData = {
-  /** provider → profile id */
-  stale: Record<string, string>;
+  /** Globally unique profile IDs whose credentials are known-dead until re-grab. */
+  stale: string[];
 };
 
 async function loadStale(): Promise<StaleData> {
   const p = stalePath();
   if (!(await fileExists(p))) {
-    return { stale: {} };
+    return { stale: [] };
   }
-  return readJsonFile<StaleData>(p);
+  const data = await readJsonFile<StaleData | { stale: Record<string, string> }>(p);
+  if (Array.isArray(data.stale)) return data;
+  return { stale: Object.values(data.stale) };
 }
 
 async function saveStale(data: StaleData): Promise<void> {
   await writeJsonFile(stalePath(), data);
 }
 
-export async function setStale(provider: string, profileId: string): Promise<void> {
+export async function setStale(profileId: string): Promise<void> {
   const data = await loadStale();
-  data.stale[provider] = profileId;
+  if (!data.stale.includes(profileId)) {
+    data.stale.push(profileId);
+  }
   await saveStale(data);
 }
 
-export async function clearStale(provider: string, profileId?: string): Promise<void> {
+export async function clearStale(profileId: string): Promise<void> {
   const data = await loadStale();
-  if (!profileId || data.stale[provider] === profileId) {
-    delete data.stale[provider];
+  const next = data.stale.filter((id) => id !== profileId);
+  if (next.length !== data.stale.length) {
+    data.stale = next;
     await saveStale(data);
   }
 }
 
-export async function getStale(provider: string): Promise<string | null> {
+export async function isStale(profileId: string): Promise<boolean> {
   const data = await loadStale();
-  return data.stale[provider] ?? null;
+  return data.stale.includes(profileId);
 }
 
-export async function getAllStale(): Promise<Record<string, string>> {
+export async function getAllStale(): Promise<string[]> {
   const data = await loadStale();
   return data.stale;
 }

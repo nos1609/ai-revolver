@@ -85,7 +85,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
     credentials,
     grab_data: grabData,
   });
-  await clearStale(providerName, profile.id);
+  await clearStale(profile.id);
 
   if (existing) {
     // Update path: don't touch active — user asked to refresh creds,
