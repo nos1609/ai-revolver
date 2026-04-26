@@ -49,12 +49,12 @@ export async function vaultCommand(
 async function vaultPath(): Promise<void> {
   const paths = getVaultPaths();
   console.log();
-  console.log(`${chalk.bold("config:")}   ${paths.configDir}`);
-  console.log(`${chalk.bold("registry:")} ${paths.registry}`);
-  console.log(`${chalk.bold("active:")}   ${paths.active}`);
-  console.log(`${chalk.bold("stale:")}    ${paths.stale}`);
-  console.log(`${chalk.bold("file:")}     ${paths.encryptedVault}`);
-  console.log(`${chalk.bold("dpapi:")}    ${paths.windowsDpapiVault}`);
+  console.log(`${pathLabel("config:")} ${paths.configDir}`);
+  console.log(`${pathLabel("registry:")} ${paths.registry}`);
+  console.log(`${pathLabel("active:")} ${paths.active}`);
+  console.log(`${pathLabel("stale:")} ${paths.stale}`);
+  console.log(`${pathLabel(tr("vault-файл:", "vault file:"))} ${paths.encryptedVault}`);
+  console.log(`${pathLabel(tr("DPAPI-файл:", "DPAPI file:"))} ${paths.windowsDpapiVault}`);
   console.log();
 }
 
@@ -63,11 +63,11 @@ async function vaultStatus(): Promise<void> {
   const backend = keyringAvailable ? "keyring" : "encrypted-file";
 
   console.log();
-  console.log(`${chalk.bold("backend:")} ${backend}`);
+  console.log(`${statusLabel("backend:")} ${backend}`);
   if (keyringAvailable) {
-    console.log(`${chalk.bold("provider:")} ${keyringBackendLabel()}`);
+    console.log(`${statusLabel(tr("провайдер:", "provider:"))} ${keyringBackendLabel()}`);
   } else {
-    console.log(`${chalk.bold("file:")} ${getVaultPaths().encryptedVault}`);
+    console.log(`${statusLabel(tr("vault-файл:", "vault file:"))} ${getVaultPaths().encryptedVault}`);
   }
   console.log();
 }
@@ -101,4 +101,12 @@ async function vaultMigrate(targetArg: string | undefined): Promise<void> {
     `  Vault migration → {target} is not implemented yet.`,
     { target },
   )));
+}
+
+function pathLabel(label: string): string {
+  return chalk.bold(label.padEnd(12));
+}
+
+function statusLabel(label: string): string {
+  return chalk.bold(label.padEnd(11));
 }
