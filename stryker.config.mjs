@@ -7,6 +7,7 @@ const config = {
   mutate: [
     "src/i18n.ts",
     "src/vault/crypto.ts",
+    "src/vault/migrate.ts",
     "src/core/export.ts",
     "src/core/usage.ts",
   ],

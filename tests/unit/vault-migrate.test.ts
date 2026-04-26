@@ -41,6 +41,40 @@ class CorruptingTargetVault extends MemVault {
   }
 }
 
+class MissingSourceVault extends MemVault {
+  override async listIds(): Promise<string[]> {
+    return ["prof_missing"];
+  }
+
+  override async get(): Promise<VaultEntry | null> {
+    return null;
+  }
+}
+
+class DroppingTargetVault extends MemVault {
+  override async put(): Promise<void> {
+    // Simulates a target backend that acknowledges writes but loses data.
+  }
+}
+
+class ReorderingTargetVault extends MemVault {
+  override async get(profileId: string): Promise<VaultEntry | null> {
+    const entry = await super.get(profileId);
+    if (!entry) return null;
+    return {
+      ...entry,
+      credentials: {
+        z: entry.credentials.z,
+        a: entry.credentials.a,
+      },
+      grab_data: {
+        later: entry.grab_data.later,
+        early: entry.grab_data.early,
+      },
+    };
+  }
+}
+
 const entryA: VaultEntry = {
   profile_id: "prof_a",
   credentials: { access_token: "tok_a" },
@@ -126,6 +160,56 @@ describe("migrateVaultEntries", () => {
     })).rejects.toThrow(/verify|провер/i);
 
     expect(await source.get("prof_a")).toEqual(entryA);
+  });
+
+  it("fails when source lists an entry but cannot read it", async () => {
+    const source = new MissingSourceVault();
+    const target = new MemVault();
+
+    await expect(migrateVaultEntries({
+      sourceName: "keyring",
+      targetName: "encrypted-file",
+      source,
+      target,
+      cleanup: "keep-source",
+    })).rejects.toThrow(/could not read|не смог/i);
+
+    expect(await target.listIds()).toEqual([]);
+  });
+
+  it("does not delete source entries when target loses copied data", async () => {
+    const source = new MemVault([entryA]);
+    const target = new DroppingTargetVault();
+
+    await expect(migrateVaultEntries({
+      sourceName: "keyring",
+      targetName: "encrypted-file",
+      source,
+      target,
+      cleanup: "delete-source",
+    })).rejects.toThrow(/verify|провер/i);
+
+    expect(await source.get("prof_a")).toEqual(entryA);
+  });
+
+  it("verifies entries independent of object key insertion order", async () => {
+    const orderedEntry: VaultEntry = {
+      profile_id: "prof_order",
+      credentials: { a: "one", z: "two" },
+      grab_data: { early: true, later: false },
+    };
+    const source = new MemVault([orderedEntry]);
+    const target = new ReorderingTargetVault();
+
+    const report = await migrateVaultEntries({
+      sourceName: "keyring",
+      targetName: "encrypted-file",
+      source,
+      target,
+      cleanup: "keep-source",
+    });
+
+    expect(report.verified).toBe(1);
   });
 
   it("allows target overwrite only with replace=true", async () => {
