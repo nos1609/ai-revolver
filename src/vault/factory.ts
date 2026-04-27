@@ -4,8 +4,9 @@ import { KeyringVault } from "./keyring-vault.js";
 import { EncryptedFileVault } from "./encrypted-file.js";
 import { promptExistingVaultPassword, promptNewVaultPassword } from "./prompt.js";
 import { winVerifyIdentity, winVerifyAvailable } from "./keyring-win.js";
-import { tr } from "../i18n.js";
+import { tr, trf } from "../i18n.js";
 import type { VaultBackendName } from "./migrate.js";
+import { keyringBackendLabel } from "./info.js";
 
 export interface VaultOpenOptions {
   /** Skip identity verification (e.g. for grab — user is already proving they own the session). */
@@ -65,7 +66,11 @@ async function openKeyringVault(opts: VaultOpenOptions): Promise<VaultStore> {
     }
     console.log(chalk.dim("  🔓 Vault: verified via Windows Security"));
   } else {
-    console.log(chalk.dim("  🔓 Vault: DPAPI (Windows)"));
+    console.log(chalk.dim(trf(
+      "  🔓 Vault: {backend}",
+      "  🔓 Vault: {backend}",
+      { backend: keyringBackendLabel() },
+    )));
   }
   return new KeyringVault();
 }

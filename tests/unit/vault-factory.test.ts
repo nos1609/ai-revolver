@@ -15,11 +15,16 @@ const configState = vi.hoisted(() => ({
   configDir: "",
 }));
 
+const platformState = vi.hoisted(() => ({
+  platform: "linux" as "win32" | "darwin" | "linux",
+}));
+
 vi.mock("../../src/platform/index.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/platform/index.js")>();
   return {
     ...actual,
     getConfigDir: () => configState.configDir,
+    getPlatform: () => platformState.platform,
   };
 });
 
@@ -65,6 +70,7 @@ beforeEach(async () => {
   promptState.nextNewConfirm = "new-pw";
   promptState.keyringAvailable = false;
   promptState.keyringIds = [];
+  platformState.platform = "linux";
 });
 
 afterEach(async () => {
@@ -135,6 +141,48 @@ describe("openVault encrypted-file fallback", () => {
 
     expect(await vault.listIds()).toEqual([]);
     expect(promptState.existing).not.toHaveBeenCalled();
+  });
+
+  it("prints the Linux keyring label when keyring is used on Linux", async () => {
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = ["prof_keyring"];
+    platformState.platform = "linux";
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = ((value?: unknown) => {
+      logs.push(String(value ?? ""));
+    }) as typeof console.log;
+    try {
+      const { openVault } = await importFactory();
+
+      await openVault({ skipVerify: true });
+
+      expect(logs.join("\n")).toContain("Linux libsecret");
+      expect(logs.join("\n")).not.toContain("DPAPI");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("prints the macOS keyring label when keyring is used on macOS", async () => {
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = ["prof_keyring"];
+    platformState.platform = "darwin";
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = ((value?: unknown) => {
+      logs.push(String(value ?? ""));
+    }) as typeof console.log;
+    try {
+      const { openVault } = await importFactory();
+
+      await openVault({ skipVerify: true });
+
+      expect(logs.join("\n")).toContain("macOS Keychain");
+      expect(logs.join("\n")).not.toContain("DPAPI");
+    } finally {
+      console.log = originalLog;
+    }
   });
 });
 
