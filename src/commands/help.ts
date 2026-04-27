@@ -172,11 +172,11 @@ const ACTIONS: Record<string, ActionHelp> = {
     description: () =>
       tr(
         "Экспортирует все профили + vault-записи + active-map в один JSON-файл.\n" +
-          "По умолчанию шифрование (AES-256-GCM + scrypt, transport password спрашивается).\n" +
+          "По умолчанию шифрование (AES-256-GCM + scrypt, спрашивается транспортный пароль).\n" +
           "--plaintext пишет живые токены открытым текстом — файл 0600, печатается\n" +
           "предупреждение; не коммитить, не расшаривать, удалять после переноса.",
         "Export all profiles + vault entries + active map to a single JSON file.\n" +
-          "Encrypted by default (AES-256-GCM + scrypt, transport password prompted).\n" +
+          "Encrypted by default (AES-256-GCM + scrypt, transfer file password prompted).\n" +
           "--plaintext writes live tokens in the clear — file is 0600, a warning is\n" +
           "printed; do not commit, do not share, delete after transfer.",
       ),
@@ -198,14 +198,14 @@ const ACTIONS: Record<string, ActionHelp> = {
     description: () =>
       tr(
         "Импортирует export-файл. Стратегия при конфликте по (name, provider):\n" +
-          "transport password расшифровывает только файл переноса; если локальный\n" +
+          "транспортный пароль расшифровывает только файл переноса; если локальный\n" +
           "backend = encrypted-file и vault.enc создаётся впервые, отдельно\n" +
           "спрашивается новый пароль локального vault-а.\n" +
           "  default      пропустить существующий профиль молча\n" +
           "  --replace    перезаписать credentials (id берётся ЛОКАЛЬНЫЙ)\n" +
           "Коллизии по id при разных name/provider всегда пропускаются.",
         "Import an export file. Conflict strategy by (name, provider):\n" +
-          "The transport password decrypts only the transfer file; if the local\n" +
+          "The transfer file password decrypts only the transfer file; if the local\n" +
           "backend is encrypted-file and vault.enc is created for the first time,\n" +
           "a separate new local vault password is prompted.\n" +
           "  default      skip existing profiles silently\n" +

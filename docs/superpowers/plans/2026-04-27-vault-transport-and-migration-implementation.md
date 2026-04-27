@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement distinct transport-password prompts, confirmed creation of new encrypted-file vaults, and safe backend-to-backend vault migration.
+**Goal:** Implement distinct transfer-file-password prompts, confirmed creation of new encrypted-file vaults, and safe backend-to-backend vault migration.
 
 **Architecture:** Keep export/import as portable snapshot flow and migration as local vault-store flow. Add small password prompt helpers, extend vault factory for explicit backend opening, and put copy/verify/delete behavior in a testable migration core.
 
@@ -44,12 +44,12 @@
 - Modify: `src/commands/import.ts`
 - Test: `tests/unit/import-export-prompts.test.ts`
 
-- [ ] Write failing tests that encrypted export requests transport export labels and encrypted import requests transport import label before opening the local vault.
+- [ ] Write failing tests that encrypted export requests transfer-file export labels and encrypted import requests transfer-file import label before opening the local vault.
 - [ ] Run targeted test and verify old generic labels fail.
 - [ ] Replace inline export/import prompt strings with prompt helpers.
 - [ ] Make `importProfiles()` open the local vault with `confirmNewFilePassword: true`.
 - [ ] Run targeted test and full `npm test`.
-- [ ] Commit transport password prompt wording.
+- [ ] Commit transfer file password prompt wording.
 
 ### Task 4: Migration Core
 
@@ -96,8 +96,7 @@
 - Modify: `README.md`
 - Modify: `docs/superpowers/specs/2026-04-27-vault-transport-and-migration-design.md` only if implementation forces a design correction
 
-- [ ] Update README examples with transport password terminology and migration flags.
+- [ ] Update README examples with transfer-file password terminology and migration flags.
 - [ ] Run smoke commands: `node dist/index.js vault export -h`, `node dist/index.js vault import -h`, `node dist/index.js vault migrate file --keep-source` in a safe mocked/temp config path if needed.
 - [ ] Run `npm run build` and `npm test`.
 - [ ] Commit docs and final verification.
-

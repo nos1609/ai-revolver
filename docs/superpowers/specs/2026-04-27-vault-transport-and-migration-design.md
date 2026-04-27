@@ -14,7 +14,7 @@
 
 ## Термины
 
-**Transport password** / **транспортный пароль**  
+**Transfer file password** / **транспортный пароль**  
 Пароль для переносимого export-файла. Используется только для шифрования/расшифровки `airev-export-*.json`. Не становится паролем локального vault-а на машине импорта.
 
 **Vault master password** / **пароль локального vault-а**  
@@ -36,7 +36,7 @@ OS-хранилище: Windows DPAPI / macOS Keychain / Linux libsecret. Пар�
 airev vault export backup.json
 ```
 
-Если экспорт encrypted, prompt должен говорить именно про transport password:
+Если экспорт encrypted, prompt должен говорить именно про транспортный пароль:
 
 ```text
 🔐 Транспортный пароль export-файла:
@@ -46,8 +46,8 @@ airev vault export backup.json
 English:
 
 ```text
-🔐 Export transport password:
-🔐 Confirm transport password:
+🔐 Export transfer file password:
+🔐 Confirm transfer file password:
 ```
 
 `--plaintext` оставляет текущую семантику: export без шифрования и с явным предупреждением о живых credentials.
@@ -138,7 +138,7 @@ airev vault migrate file --keep-source
 
 ## Security Invariants
 
-1. Transport password и vault master password не взаимозаменяемы и не переиспользуются автоматически.
+1. Transfer file password / транспортный пароль и vault master password не взаимозаменяемы и не переиспользуются автоматически.
 2. Import не должен создавать новый `vault.enc` без подтверждения нового vault master password.
 3. Migration не должна создавать промежуточный export JSON.
 4. Migration не удаляет source до полной verify target.
@@ -226,7 +226,7 @@ interface VaultMigrationReport {
 
 Import:
 
-- неверный transport password -> import падает до открытия локального vault-а;
+- неверный transfer file password / транспортный пароль -> import падает до открытия локального vault-а;
 - новый vault password не совпал с confirm -> import падает до записи credentials;
 - существующий `vault.enc` не открылся -> import падает без изменения registry/vault;
 - конфликт profile name/provider сохраняет текущую семантику `--replace`.
@@ -277,7 +277,7 @@ Migration:
 
 - Не реализовывать secure wipe как обещание безопасности.
 - Не переносить `stale.json` через export/import.
-- Не делать `transport password` паролем локального `vault.enc`.
+- Не делать transfer file password / транспортный пароль паролем локального `vault.enc`.
 - Не добавлять глобальную настройку preferred backend в этой итерации.
 - Не менять формат export payload без необходимости.
 

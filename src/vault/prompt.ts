@@ -53,17 +53,17 @@ export function transportPasswordPromptLabel(
   if (purpose === "export") {
     return lang === "ru"
       ? "  🔐 Транспортный пароль export-файла: "
-      : "  🔐 Export transport password: ";
+      : "  🔐 Export transfer file password: ";
   }
   return lang === "ru"
     ? "  🔐 Транспортный пароль import-файла: "
-    : "  🔐 Import transport password: ";
+    : "  🔐 Import transfer file password: ";
 }
 
 export function confirmTransportPasswordPromptLabel(lang: Lang = LANG): string {
   return lang === "ru"
     ? "  🔐 Повтори транспортный пароль: "
-    : "  🔐 Confirm transport password: ";
+    : "  🔐 Confirm transfer file password: ";
 }
 
 export function newVaultPasswordPromptLabels(lang: Lang = LANG): { password: string; confirm: string } {

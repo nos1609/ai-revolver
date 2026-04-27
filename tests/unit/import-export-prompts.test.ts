@@ -65,7 +65,7 @@ afterEach(() => {
 });
 
 describe("import/export password prompts", () => {
-  it("export asks for a transport password and confirmation", async () => {
+  it("export asks for a transfer file password and confirmation", async () => {
     const { exportProfiles } = await import("../../src/commands/export.js");
 
     await exportProfiles({ outPath: "backup.json" });
@@ -76,7 +76,7 @@ describe("import/export password prompts", () => {
     expect(exportCoreMocks.serializeExport).toHaveBeenCalledWith(expect.anything(), "transport-pw");
   });
 
-  it("encrypted import asks for the import transport password", async () => {
+  it("encrypted import asks for the import transfer file password", async () => {
     const { importProfiles } = await import("../../src/commands/import.js");
 
     await importProfiles("backup.json");
