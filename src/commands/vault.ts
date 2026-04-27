@@ -3,9 +3,12 @@ import { exportProfiles } from "./export.js";
 import { importProfiles } from "./import.js";
 import { tr, trf } from "../i18n.js";
 import { openVaultBackend } from "../vault/factory.js";
-import { getVaultPaths, keyringBackendLabel, normalizeVaultMigrateTarget } from "../vault/info.js";
-import { EncryptedFileVault } from "../vault/encrypted-file.js";
-import { KeyringVault } from "../vault/keyring-vault.js";
+import {
+  describeEffectiveVaultBackend,
+  getVaultPaths,
+  keyringBackendLabel,
+  normalizeVaultMigrateTarget,
+} from "../vault/info.js";
 import { migrateVaultEntries, type VaultBackendName } from "../vault/migrate.js";
 import type { VaultStore } from "../vault/store.js";
 
@@ -66,16 +69,15 @@ async function vaultPath(): Promise<void> {
 }
 
 async function vaultStatus(): Promise<void> {
-  const keyringAvailable = await KeyringVault.isAvailable();
-  const backend = await detectSourceBackend();
+  const state = await describeEffectiveVaultBackend();
 
   console.log();
-  console.log(`${statusLabel("backend:")} ${backend}`);
-  if (backend === "keyring") {
+  console.log(`${statusLabel("backend:")} ${state.backend}`);
+  if (state.backend === "keyring") {
     console.log(`${statusLabel(tr("провайдер:", "provider:"))} ${keyringBackendLabel()}`);
   } else {
     console.log(`${statusLabel(tr("vault-файл:", "vault file:"))} ${getVaultPaths().encryptedVault}`);
-    if (keyringAvailable) {
+    if (state.keyringAvailable) {
       console.log(chalk.dim(tr(
         "  keyring доступен, но пуст; используется vault.enc.",
         "  keyring is available but empty; using vault.enc.",
@@ -86,7 +88,8 @@ async function vaultStatus(): Promise<void> {
 }
 
 async function vaultPasswd(): Promise<void> {
-  if (await KeyringVault.isAvailable()) {
+  const state = await describeEffectiveVaultBackend();
+  if (state.backend === "keyring") {
     console.log(chalk.dim(tr(
       "  Используется OS keyring; master password airev не применяется.",
       "  OS keyring backend is active; airev master password is not used.",
@@ -194,13 +197,7 @@ async function vaultMigrateWithOptions(
 }
 
 async function detectSourceBackend(): Promise<VaultBackendName> {
-  if (!(await KeyringVault.isAvailable())) {
-    return "encrypted-file";
-  }
-
-  const keyringVault = new KeyringVault();
-  const keyringIds = await keyringVault.listIds();
-  return keyringIds.length === 0 && await EncryptedFileVault.exists() ? "encrypted-file" : "keyring";
+  return (await describeEffectiveVaultBackend()).backend;
 }
 
 async function confirmDeleteSource(source: VaultBackendName): Promise<boolean> {

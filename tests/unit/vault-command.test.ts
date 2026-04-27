@@ -6,6 +6,16 @@ const keyringState = vi.hoisted(() => ({
   encryptedFileExists: false,
 }));
 
+const infoMocks = vi.hoisted(() => ({
+  effectiveBackend: {
+    backend: "encrypted-file" as "keyring" | "encrypted-file",
+    keyringAvailable: true,
+    keyringEntryCount: 0,
+    encryptedFileExists: true,
+    keyringLabel: "Linux libsecret",
+  },
+}));
+
 const backendMocks = vi.hoisted(() => ({
   sourceIds: [] as string[],
   removedIds: [] as string[],
@@ -49,6 +59,14 @@ vi.mock("../../src/vault/encrypted-file.js", () => ({
   },
 }));
 
+vi.mock("../../src/vault/info.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/vault/info.js")>();
+  return {
+    ...actual,
+    describeEffectiveVaultBackend: vi.fn(async () => infoMocks.effectiveBackend),
+  };
+});
+
 vi.mock("../../src/vault/factory.js", () => ({
   openVaultBackend: backendMocks.openVaultBackend,
 }));
@@ -61,6 +79,13 @@ afterEach(() => {
   keyringState.available = true;
   keyringState.ids = [];
   keyringState.encryptedFileExists = false;
+  infoMocks.effectiveBackend = {
+    backend: "encrypted-file",
+    keyringAvailable: true,
+    keyringEntryCount: 0,
+    encryptedFileExists: true,
+    keyringLabel: "Linux libsecret",
+  };
   backendMocks.sourceIds = [];
   backendMocks.removedIds = [];
   vi.clearAllMocks();
@@ -68,6 +93,13 @@ afterEach(() => {
 
 describe("vaultCommand migrate", () => {
   it("migrates keyring to encrypted-file and keeps source with --keep-source", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 2,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
     const { vaultCommand } = await import("../../src/commands/vault.js");
 
     await vaultCommand("migrate", "file", { keepSource: true, isTty: true });
@@ -84,6 +116,13 @@ describe("vaultCommand migrate", () => {
   });
 
   it("uses delete-source cleanup with --yes", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 2,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
     const { vaultCommand } = await import("../../src/commands/vault.js");
 
     await vaultCommand("migrate", "file", { yes: true, isTty: false });
@@ -121,6 +160,13 @@ describe("vaultCommand migrate", () => {
   });
 
   it("interactive delete removes only verified snapshot ids from the migration report", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 2,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
     backendMocks.sourceIds = ["prof_a", "prof_b", "prof_late"];
     const originalStdin = process.stdin;
     const originalStdoutWrite = process.stdout.write;
@@ -148,6 +194,13 @@ describe("vaultCommand migrate", () => {
   });
 
   it("fails before opening vaults in non-TTY mode without --yes or --keep-source", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 2,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
     const { vaultCommand } = await import("../../src/commands/vault.js");
 
     await expect(vaultCommand("migrate", "file", { isTty: false })).rejects.toThrow(/--yes|--keep-source/);
@@ -163,5 +216,43 @@ describe("vaultCommand migrate", () => {
     await expect(vaultCommand("migrate", "file", { keepSource: true, isTty: true })).rejects.toThrow(/already|уже|same/i);
 
     expect(backendMocks.openVaultBackend).not.toHaveBeenCalled();
+  });
+});
+
+describe("vaultCommand status/passwd effective backend", () => {
+  it("status reports encrypted-file when keyring is available but empty and vault.enc exists", async () => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = ((value?: unknown) => {
+      logs.push(String(value ?? ""));
+    }) as typeof console.log;
+    try {
+      const { vaultCommand } = await import("../../src/commands/vault.js");
+
+      await vaultCommand("status", undefined);
+
+      expect(logs.join("\n")).toContain("encrypted-file");
+      expect(logs.join("\n")).toContain("keyring is available but empty");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("passwd uses the effective backend instead of keyring availability", async () => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = ((value?: unknown) => {
+      logs.push(String(value ?? ""));
+    }) as typeof console.log;
+    try {
+      const { vaultCommand } = await import("../../src/commands/vault.js");
+
+      await vaultCommand("passwd", undefined);
+
+      expect(logs.join("\n")).toContain("Changing the encrypted-file vault master password is not implemented yet");
+      expect(logs.join("\n")).not.toContain("OS keyring backend is active");
+    } finally {
+      console.log = originalLog;
+    }
   });
 });
