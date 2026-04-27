@@ -6,6 +6,7 @@ const config = {
   mutate: [
     "src/i18n.ts",
     "src/vault/crypto.ts",
+    "src/vault/encrypted-file.ts",
     "src/vault/migrate.ts",
     "src/commands/vault.ts",
     "src/core/export.ts",

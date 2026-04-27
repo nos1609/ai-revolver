@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { exportProfiles } from "./export.js";
 import { importProfiles } from "./import.js";
 import { tr, trf } from "../i18n.js";
+import { rekeyEncryptedFileVault } from "../vault/encrypted-file.js";
 import { openVaultBackend } from "../vault/factory.js";
 import {
   describeEffectiveVaultBackend,
@@ -10,6 +11,7 @@ import {
   normalizeVaultMigrateTarget,
 } from "../vault/info.js";
 import { migrateVaultEntries, type VaultBackendName } from "../vault/migrate.js";
+import { promptExistingVaultPassword, promptNewVaultPassword } from "../vault/prompt.js";
 import type { VaultStore } from "../vault/store.js";
 
 export interface VaultCommandOptions {
@@ -97,9 +99,20 @@ async function vaultPasswd(): Promise<void> {
     return;
   }
 
-  console.log(chalk.yellow(tr(
-    "  Смена master password для encrypted-file vault пока не реализована.",
-    "  Changing the encrypted-file vault master password is not implemented yet.",
+  const oldPassword = await promptExistingVaultPassword();
+  const { password: newPassword, confirm } = await promptNewVaultPassword();
+  if (newPassword !== confirm) {
+    throw new Error(tr("Пароли локального vault-а не совпадают.", "Local vault passwords do not match."));
+  }
+  if (!newPassword) {
+    throw new Error(tr("Пароль обязателен.", "Password required."));
+  }
+
+  await rekeyEncryptedFileVault(oldPassword, newPassword);
+
+  console.log(chalk.green(tr(
+    "  ✓ Пароль локального vault-а изменён.",
+    "  ✓ Local vault password changed.",
   )));
 }
 

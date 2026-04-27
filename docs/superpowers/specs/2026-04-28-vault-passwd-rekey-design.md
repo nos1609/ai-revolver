@@ -1,7 +1,7 @@
 # Vault Password Rekey Design
 
 Date: 2026-04-28
-Status: design spec, no implementation
+Status: implemented
 
 ## Purpose
 
@@ -9,7 +9,7 @@ Implement `airev vault passwd` for the local encrypted-file vault without changi
 
 The command should rotate the password that protects `vault.enc`. It must not affect transfer-file passwords used by `vault export` / `vault import`, and it must not imply any password for OS keyring backends.
 
-## Current State
+## Pre-Implementation State
 
 `vault passwd` is currently a stub:
 

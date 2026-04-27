@@ -11,6 +11,30 @@ import {
 
 type EncryptedVaultFile = EncryptedEnvelope;
 
+export async function rekeyEncryptedFileVault(oldPassword: string, newPassword: string): Promise<void> {
+  if (!newPassword) {
+    throw new Error("Password required.");
+  }
+
+  const filePath = EncryptedFileVault.path();
+  const encFile = await readJsonFile<EncryptedVaultFile>(filePath);
+  let data: VaultData;
+  try {
+    data = parseVaultData(decryptWithPassword(encFile, oldPassword));
+  } catch {
+    throw new Error("Wrong vault password.");
+  }
+
+  const nextEnvelope = encryptWithPassword(JSON.stringify(data), newPassword);
+  await writeJsonFile(filePath, nextEnvelope, 0o600);
+
+  try {
+    parseVaultData(decryptWithPassword(await readJsonFile<EncryptedVaultFile>(filePath), newPassword));
+  } catch {
+    throw new Error("Rekey verify failed.");
+  }
+}
+
 export class EncryptedFileVault implements VaultStore {
   private filePath: string;
   private password: string;
@@ -81,4 +105,12 @@ export class EncryptedFileVault implements VaultStore {
     const data = await this.load();
     return data.entries.map((e) => e.profile_id);
   }
+}
+
+function parseVaultData(json: string): VaultData {
+  const parsed = JSON.parse(json) as VaultData;
+  if (!parsed || typeof parsed !== "object" || parsed.version !== 1 || !Array.isArray(parsed.entries)) {
+    throw new Error("Invalid vault data.");
+  }
+  return parsed;
 }

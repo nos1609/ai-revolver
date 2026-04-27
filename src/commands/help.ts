@@ -279,7 +279,7 @@ const ACTIONS: Record<string, ActionHelp> = {
     examples: () => [
       `airev vault path                       ${tr("# показать config/registry/active/stale/vault paths", "# show config/registry/active/stale/vault paths")}`,
       `airev vault status                     ${tr("# показать активный backend", "# show active backend")}`,
-      `airev vault passwd                     ${tr("# смена пароля file-vault (пока stub)", "# change file-vault password (stub for now)")}`,
+      `airev vault passwd                     ${tr("# сменить пароль локального vault.enc", "# change local vault.enc password")}`,
       `airev vault migrate file --keep-source ${tr("# fallback-copy, source оставить", "# fallback-copy, keep source")}`,
       `airev vault migrate keyring --yes      ${tr("# copy+verify, затем удалить source", "# copy+verify, then delete source")}`,
     ],

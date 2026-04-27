@@ -32,6 +32,21 @@ const backendMocks = vi.hoisted(() => ({
   )),
 }));
 
+const promptMocks = vi.hoisted(() => ({
+  existingPassword: "old-pw",
+  newPassword: "new-pw",
+  newConfirm: "new-pw",
+  promptExistingVaultPassword: vi.fn(async () => promptMocks.existingPassword),
+  promptNewVaultPassword: vi.fn(async () => ({
+    password: promptMocks.newPassword,
+    confirm: promptMocks.newConfirm,
+  })),
+}));
+
+const encryptedFileMocks = vi.hoisted(() => ({
+  rekeyEncryptedFileVault: vi.fn(async () => {}),
+}));
+
 const migrateMocks = vi.hoisted(() => ({
   migrateVaultEntries: vi.fn(async () => ({
     source: "keyring",
@@ -57,6 +72,12 @@ vi.mock("../../src/vault/encrypted-file.js", () => ({
   EncryptedFileVault: class {
     static exists = vi.fn(async () => keyringState.encryptedFileExists);
   },
+  rekeyEncryptedFileVault: encryptedFileMocks.rekeyEncryptedFileVault,
+}));
+
+vi.mock("../../src/vault/prompt.js", () => ({
+  promptExistingVaultPassword: promptMocks.promptExistingVaultPassword,
+  promptNewVaultPassword: promptMocks.promptNewVaultPassword,
 }));
 
 vi.mock("../../src/vault/info.js", async (importOriginal) => {
@@ -88,6 +109,9 @@ afterEach(() => {
   };
   backendMocks.sourceIds = [];
   backendMocks.removedIds = [];
+  promptMocks.existingPassword = "old-pw";
+  promptMocks.newPassword = "new-pw";
+  promptMocks.newConfirm = "new-pw";
   vi.clearAllMocks();
 });
 
@@ -238,7 +262,7 @@ describe("vaultCommand status/passwd effective backend", () => {
     }
   });
 
-  it("passwd uses the effective backend instead of keyring availability", async () => {
+  it("passwd changes the encrypted-file password through the rekey helper", async () => {
     const logs: string[] = [];
     const originalLog = console.log;
     console.log = ((value?: unknown) => {
@@ -249,8 +273,48 @@ describe("vaultCommand status/passwd effective backend", () => {
 
       await vaultCommand("passwd", undefined);
 
-      expect(logs.join("\n")).toContain("Changing the encrypted-file vault master password is not implemented yet");
+      expect(promptMocks.promptExistingVaultPassword).toHaveBeenCalledTimes(1);
+      expect(promptMocks.promptNewVaultPassword).toHaveBeenCalledTimes(1);
+      expect(encryptedFileMocks.rekeyEncryptedFileVault).toHaveBeenCalledWith("old-pw", "new-pw");
+      expect(logs.join("\n")).toContain("Local vault password changed");
       expect(logs.join("\n")).not.toContain("OS keyring backend is active");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("passwd rejects mismatched new local vault password confirmation before rekey", async () => {
+    promptMocks.newPassword = "new-pw";
+    promptMocks.newConfirm = "other-pw";
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+
+    await expect(vaultCommand("passwd", undefined)).rejects.toThrow(/match|совпад/i);
+
+    expect(encryptedFileMocks.rekeyEncryptedFileVault).not.toHaveBeenCalled();
+  });
+
+  it("passwd keeps keyring backend as a no-op without prompting", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 1,
+      encryptedFileExists: false,
+      keyringLabel: "Windows DPAPI",
+    };
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = ((value?: unknown) => {
+      logs.push(String(value ?? ""));
+    }) as typeof console.log;
+    try {
+      const { vaultCommand } = await import("../../src/commands/vault.js");
+
+      await vaultCommand("passwd", undefined);
+
+      expect(logs.join("\n")).toContain("OS keyring backend is active");
+      expect(promptMocks.promptExistingVaultPassword).not.toHaveBeenCalled();
+      expect(promptMocks.promptNewVaultPassword).not.toHaveBeenCalled();
+      expect(encryptedFileMocks.rekeyEncryptedFileVault).not.toHaveBeenCalled();
     } finally {
       console.log = originalLog;
     }
