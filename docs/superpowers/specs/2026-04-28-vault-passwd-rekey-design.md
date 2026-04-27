@@ -122,8 +122,8 @@ The summary must not print profile ids, credentials, tokens, old password, or ne
 5. After a successful rekey, the old password must no longer decrypt the current `vault.enc`.
 6. The implementation must not create an export JSON or any plaintext credential file.
 7. The command must not log credentials, access tokens, refresh tokens, profile ids, or passwords.
-8. Secure wipe is not promised. The operation is logical re-encryption plus atomic replacement; filesystem journals, SSD wear leveling, and `.bak` recovery files may retain old encrypted bytes.
-9. The existing `atomicWrite` backup behavior may remain. Backup files are encrypted blobs, not plaintext secrets.
+8. Secure wipe is not promised. The operation is logical re-encryption plus atomic replacement; filesystem journals and SSD wear leveling may retain old encrypted bytes.
+9. After successful encrypted-file writes, the explicit `vault.enc.bak` recovery file should be removed best-effort so stale encrypted snapshots do not remain next to the current vault.
 10. On failure after opening the old vault but before replacement, the original `vault.enc` must remain readable with the old password.
 11. On failure during replacement or verify, the command must throw and must not print a success summary.
 

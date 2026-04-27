@@ -68,4 +68,28 @@ describe("rekeyEncryptedFileVault", () => {
     const stillOldVault = new EncryptedFileVault("old-pw");
     await expect(stillOldVault.get("prof_a")).resolves.toEqual(entry);
   });
+
+  it("removes vault.enc.bak after a successful rekey", async () => {
+    const { EncryptedFileVault, rekeyEncryptedFileVault } = await import("../../src/vault/encrypted-file.js");
+    const oldVault = new EncryptedFileVault("old-pw");
+    await oldVault.put(entry);
+    await fs.writeFile(path.join(configState.configDir, "vault.enc.bak"), "stale encrypted backup", "utf-8");
+
+    await rekeyEncryptedFileVault("old-pw", "new-pw");
+
+    await expect(fs.access(path.join(configState.configDir, "vault.enc.bak"))).rejects.toThrow();
+  });
+});
+
+describe("EncryptedFileVault backup cleanup", () => {
+  it("removes vault.enc.bak after successful vault writes", async () => {
+    const { EncryptedFileVault } = await import("../../src/vault/encrypted-file.js");
+    const vault = new EncryptedFileVault("pw");
+    await vault.put(entry);
+    await fs.writeFile(path.join(configState.configDir, "vault.enc.bak"), "stale encrypted backup", "utf-8");
+
+    await vault.remove("prof_a");
+
+    await expect(fs.access(path.join(configState.configDir, "vault.enc.bak"))).rejects.toThrow();
+  });
 });

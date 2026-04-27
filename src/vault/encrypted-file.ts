@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { getConfigDir } from "../platform/index.js";
 import { readJsonFile, writeJsonFile, fileExists, ensureDir } from "../platform/fs.js";
@@ -27,6 +28,7 @@ export async function rekeyEncryptedFileVault(oldPassword: string, newPassword: 
 
   const nextEnvelope = encryptWithPassword(JSON.stringify(data), newPassword);
   await writeJsonFile(filePath, nextEnvelope, 0o600);
+  await removeEncryptedVaultBackup(filePath);
 
   try {
     parseVaultData(decryptWithPassword(await readJsonFile<EncryptedVaultFile>(filePath), newPassword));
@@ -77,6 +79,7 @@ export class EncryptedFileVault implements VaultStore {
     const json = JSON.stringify(this.cache);
     const encFile = encryptWithPassword(json, this.password);
     await writeJsonFile(this.filePath, encFile, 0o600);
+    await removeEncryptedVaultBackup(this.filePath);
   }
 
   async put(entry: VaultEntry): Promise<void> {
@@ -113,4 +116,8 @@ function parseVaultData(json: string): VaultData {
     throw new Error("Invalid vault data.");
   }
   return parsed;
+}
+
+async function removeEncryptedVaultBackup(filePath: string): Promise<void> {
+  await fs.unlink(`${filePath}.bak`).catch(() => {});
 }
