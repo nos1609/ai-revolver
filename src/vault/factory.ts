@@ -21,7 +21,17 @@ export interface VaultOpenOptions {
  */
 export async function openVault(opts: VaultOpenOptions = {}): Promise<VaultStore> {
   if (await KeyringVault.isAvailable()) {
-    return openKeyringVault(opts);
+    const keyringVault = await openKeyringVault(opts);
+    const keyringIds = await keyringVault.listIds();
+    if (keyringIds.length > 0 || !(await EncryptedFileVault.exists())) {
+      return keyringVault;
+    }
+
+    console.error(chalk.dim(tr(
+      "  OS keyring пуст, найден vault.enc; открываем локальный encrypted-file vault.",
+      "  OS keyring is empty and vault.enc exists; opening the local encrypted-file vault.",
+    )));
+    return openEncryptedFileVault(opts);
   }
 
   // Fallback: password prompt

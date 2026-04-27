@@ -25,7 +25,8 @@ airev vault export backup.json     # encrypted export, пароль = транс
 airev vault export backup.json --plaintext  # без шифрования (⚠ живые токены в файле)
 airev vault import backup.json     # восстановить; конфликты по name+provider → skip
 airev vault import backup.json --replace --restore-active
-airev vault migrate file --keep-source  # copy+verify в vault.enc, source оставить
+airev vault migrate file --keep-source  # fallback-copy в vault.enc, source оставить
+airev vault migrate file --yes  # copy+verify, удалить keyring; дальше читается vault.enc
 airev vault migrate keyring --yes  # copy+verify, затем удалить source entries
 ```
 
@@ -38,7 +39,7 @@ airev vault migrate keyring --yes  # copy+verify, затем удалить sour
 - **Claude / rotating creds** — для active-профиля `usage` сначала читает системный `~/.claude/.credentials.json`, а если vault-креды признаны мёртвыми, профиль помечается как `stale` и больше не дёргается автоматически, пока его не обновят через `airev claude grab <name>`.
 - **Stale state** — `stale.json` локальный кэш наблюдений, а не часть профиля: он не экспортируется и не импортируется; успешный `grab` снимает stale-флаг.
 - **Транспортный пароль** — пароль export/import-файла. В английской локали это `transfer file password`; он не становится паролем локального `vault.enc`.
-- **Vault commands** — `vault export/import` основной интерфейс переносимости; `vault migrate <keyring|file>` локально переносит entries между backend-ами через copy → verify → optional delete-source. Старые top-level `export/import` оставлены как совместимые алиасы.
+- **Vault commands** — `vault export/import` основной интерфейс переносимости; `vault migrate <keyring|file>` локально переносит entries между backend-ами через copy → verify → optional delete-source. Если keyring доступен, но пустой, а `vault.enc` существует, обычный CLI читает `vault.enc`; поэтому `migrate file --yes` реально переключает на file-backend, а `--keep-source` остаётся fallback-copy. Старые top-level `export/import` оставлены как совместимые алиасы.
 
 ## Поддерживаемые провайдеры
 

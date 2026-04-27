@@ -134,7 +134,9 @@ airev vault migrate file --keep-source
 `--keep-source` означает: после успешной copy+verify оставить source и не спрашивать.  
 Без TTY и без `--yes` / `--keep-source` команда должна падать до копирования.
 
-Важно: на Windows `migrate file --keep-source` не переключает обычный CLI на `vault.enc`, потому что auto-selection продолжит выбирать доступный keyring. Это полезно как fallback-copy, но не как полноценная смена backend-а. Полноценная смена в рамках этой спеки достигается только через подтверждённое удаление source entries после verify.
+Важно: если keyring доступен, но пустой, а `vault.enc` существует, обычный `openVault()` должен fallback-иться на encrypted-file. Поэтому `migrate file --yes` является полноценным переходом keyring -> file: copy -> verify -> delete keyring entries -> последующие команды читают `vault.enc`. `migrate file --keep-source` остаётся fallback-copy и не переключает backend, пока keyring содержит entries.
+
+`--yes` и `--keep-source` взаимоисключающие. Команда должна падать до открытия vault-ов с сообщением `Use either --yes or --keep-source, not both`.
 
 ## Security Invariants
 
@@ -148,6 +150,7 @@ airev vault migrate file --keep-source
 8. `delete source entries` не обещает secure wipe. Для `vault.enc` это логическое удаление с перезаписью файла; физическое стирание на SSD/journaling FS не гарантируется.
 9. При `keyring -> file` нужно предупредить, что `vault.enc` является копируемым offline blob-ом и безопасность зависит от силы vault master password.
 10. При `file -> keyring` нужно предупредить, что после удаления source доступ будет зависеть от OS user/session keyring.
+11. Delete-source удаляет только snapshot ids, которые реально копировались и прошли verify; после `remove()` каждый id должен больше не читаться из source.
 
 ## Архитектурные изменения
 

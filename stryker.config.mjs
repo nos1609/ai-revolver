@@ -2,12 +2,12 @@
 const config = {
   testRunner: "vitest",
   appendPlugins: ["@stryker-mutator/vitest-runner"],
-  // Mutate only pure-logic modules with tests. Don't waste cycles on
-  // I/O-heavy command handlers until their tests catch up.
+  // Mutate focused logic plus migration orchestration covered by unit tests.
   mutate: [
     "src/i18n.ts",
     "src/vault/crypto.ts",
     "src/vault/migrate.ts",
+    "src/commands/vault.ts",
     "src/core/export.ts",
     "src/core/usage.ts",
   ],

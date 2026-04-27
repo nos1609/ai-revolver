@@ -236,11 +236,15 @@ const ACTIONS: Record<string, ActionHelp> = {
         "Локально переносит vault entries между backend-ами без export-файла:\n" +
           "copy → verify target → optional delete-source. Без --yes/--keep-source\n" +
           "в интерактивном терминале спрашивает, удалять ли source после verify.\n" +
-          "В non-TTY режиме нужен явный --yes или --keep-source.",
+          "В non-TTY режиме нужен явный --yes или --keep-source.\n" +
+          "migrate file --yes очищает keyring; если keyring пуст и vault.enc есть,\n" +
+          "обычный CLI дальше открывает vault.enc. --keep-source только создаёт fallback-copy.",
         "Locally migrates vault entries between backends without an export file:\n" +
           "copy → verify target → optional delete-source. Without --yes/--keep-source\n" +
           "in an interactive terminal, prompts whether to delete source after verify.\n" +
-          "In non-TTY mode, explicit --yes or --keep-source is required.",
+          "In non-TTY mode, explicit --yes or --keep-source is required.\n" +
+          "migrate file --yes empties keyring; if keyring is empty and vault.enc exists,\n" +
+          "the normal CLI opens vault.enc. --keep-source only creates a fallback copy.",
       ),
     options: () => [
       tr(
@@ -257,8 +261,8 @@ const ACTIONS: Record<string, ActionHelp> = {
       ),
     ],
     examples: () => [
-      `airev vault migrate file --keep-source     ${tr("# создать fallback vault.enc, source оставить", "# create fallback vault.enc, keep source")}`,
-      `airev vault migrate file --yes            ${tr("# перейти keyring → file после verify", "# switch keyring → file after verify")}`,
+      `airev vault migrate file --keep-source     ${tr("# fallback-copy в vault.enc, source оставить", "# fallback-copy to vault.enc, keep source")}`,
+      `airev vault migrate file --yes            ${tr("# удалить keyring; дальше читать vault.enc", "# delete keyring; then read vault.enc")}`,
       `airev vault migrate keyring --yes         ${tr("# перейти file → keyring после verify", "# switch file → keyring after verify")}`,
     ],
   },
@@ -276,7 +280,7 @@ const ACTIONS: Record<string, ActionHelp> = {
       `airev vault path                       ${tr("# показать config/registry/active/stale/vault paths", "# show config/registry/active/stale/vault paths")}`,
       `airev vault status                     ${tr("# показать активный backend", "# show active backend")}`,
       `airev vault passwd                     ${tr("# смена пароля file-vault (пока stub)", "# change file-vault password (stub for now)")}`,
-      `airev vault migrate file --keep-source ${tr("# copy+verify, source оставить", "# copy+verify, keep source")}`,
+      `airev vault migrate file --keep-source ${tr("# fallback-copy, source оставить", "# fallback-copy, keep source")}`,
       `airev vault migrate keyring --yes      ${tr("# copy+verify, затем удалить source", "# copy+verify, then delete source")}`,
     ],
   },

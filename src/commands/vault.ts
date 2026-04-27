@@ -4,6 +4,7 @@ import { importProfiles } from "./import.js";
 import { tr, trf } from "../i18n.js";
 import { openVaultBackend } from "../vault/factory.js";
 import { getVaultPaths, keyringBackendLabel, normalizeVaultMigrateTarget } from "../vault/info.js";
+import { EncryptedFileVault } from "../vault/encrypted-file.js";
 import { KeyringVault } from "../vault/keyring-vault.js";
 import { migrateVaultEntries, type VaultBackendName } from "../vault/migrate.js";
 import type { VaultStore } from "../vault/store.js";
@@ -66,14 +67,20 @@ async function vaultPath(): Promise<void> {
 
 async function vaultStatus(): Promise<void> {
   const keyringAvailable = await KeyringVault.isAvailable();
-  const backend = keyringAvailable ? "keyring" : "encrypted-file";
+  const backend = await detectSourceBackend();
 
   console.log();
   console.log(`${statusLabel("backend:")} ${backend}`);
-  if (keyringAvailable) {
+  if (backend === "keyring") {
     console.log(`${statusLabel(tr("провайдер:", "provider:"))} ${keyringBackendLabel()}`);
   } else {
     console.log(`${statusLabel(tr("vault-файл:", "vault file:"))} ${getVaultPaths().encryptedVault}`);
+    if (keyringAvailable) {
+      console.log(chalk.dim(tr(
+        "  keyring доступен, но пуст; используется vault.enc.",
+        "  keyring is available but empty; using vault.enc.",
+      )));
+    }
   }
   console.log();
 }
@@ -94,6 +101,10 @@ async function vaultPasswd(): Promise<void> {
 }
 
 async function vaultMigrate(targetArg: string | undefined, opts: VaultCommandOptions): Promise<void> {
+  if (opts.yes && opts.keepSource) {
+    throw new Error("Use either --yes or --keep-source, not both");
+  }
+
   const normalized = normalizeVaultMigrateTarget(targetArg);
   if (!normalized) {
     throw new Error(tr(
@@ -167,7 +178,7 @@ async function vaultMigrateWithOptions(
     { copied: report.copied, verified: report.verified, deleted: report.deleted },
   )));
   if (!opts.yes && !opts.keepSource && await confirmDeleteSource(source)) {
-    const deleted = await deleteSourceEntries(sourceVault);
+    const deleted = await deleteSourceEntries(sourceVault, report.verifiedIds);
     console.log(chalk.green(trf(
       `  ✓ Удалено из source: {deleted}`,
       `  ✓ Deleted from source: {deleted}`,
@@ -183,7 +194,13 @@ async function vaultMigrateWithOptions(
 }
 
 async function detectSourceBackend(): Promise<VaultBackendName> {
-  return await KeyringVault.isAvailable() ? "keyring" : "encrypted-file";
+  if (!(await KeyringVault.isAvailable())) {
+    return "encrypted-file";
+  }
+
+  const keyringVault = new KeyringVault();
+  const keyringIds = await keyringVault.listIds();
+  return keyringIds.length === 0 && await EncryptedFileVault.exists() ? "encrypted-file" : "keyring";
 }
 
 async function confirmDeleteSource(source: VaultBackendName): Promise<boolean> {
@@ -204,12 +221,19 @@ async function confirmDeleteSource(source: VaultBackendName): Promise<boolean> {
   });
 }
 
-async function deleteSourceEntries(source: VaultStore): Promise<number> {
-  const ids = await source.listIds();
+async function deleteSourceEntries(source: VaultStore, ids: string[]): Promise<number> {
+  let deleted = 0;
   for (const id of ids) {
     await source.remove(id);
+    if (await source.get(id)) {
+      throw new Error(tr(
+        `Source vault сообщил об удалении entry, но entry всё ещё читается.`,
+        `Source vault reported delete success, but the entry is still readable.`,
+      ));
+    }
+    deleted += 1;
   }
-  return ids.length;
+  return deleted;
 }
 
 function pathLabel(label: string): string {

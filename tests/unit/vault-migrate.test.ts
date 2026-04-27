@@ -75,6 +75,21 @@ class ReorderingTargetVault extends MemVault {
   }
 }
 
+class StickyRemoveVault extends MemVault {
+  override async remove(): Promise<void> {
+    // Simulates a backend that claims remove succeeded but keeps the entry.
+  }
+}
+
+class FailingRemoveVault extends MemVault {
+  override async remove(profileId: string): Promise<void> {
+    if (profileId === "prof_b") {
+      throw new Error("remove failed");
+    }
+    await super.remove(profileId);
+  }
+}
+
 const entryA: VaultEntry = {
   profile_id: "prof_a",
   credentials: { access_token: "tok_a" },
@@ -123,6 +138,7 @@ describe("migrateVaultEntries", () => {
       verified: 2,
       deleted: 0,
       keptSource: true,
+      verifiedIds: ["prof_a", "prof_b"],
     });
     expect(await target.get("prof_a")).toEqual(entryA);
     expect(await target.get("prof_b")).toEqual(entryB);
@@ -143,6 +159,7 @@ describe("migrateVaultEntries", () => {
 
     expect(report.deleted).toBe(2);
     expect(report.keptSource).toBe(false);
+    expect(report.verifiedIds).toEqual(["prof_a", "prof_b"]);
     expect(await source.listIds()).toEqual([]);
     expect(await target.get("prof_a")).toEqual(entryA);
   });
@@ -227,5 +244,36 @@ describe("migrateVaultEntries", () => {
 
     expect(report.copied).toBe(1);
     expect(await target.get("prof_a")).toEqual(entryA);
+  });
+
+  it("throws when source remove reports success but the id is still readable", async () => {
+    const source = new StickyRemoveVault([entryA]);
+    const target = new MemVault();
+
+    await expect(migrateVaultEntries({
+      sourceName: "keyring",
+      targetName: "encrypted-file",
+      source,
+      target,
+      cleanup: "delete-source",
+    })).rejects.toThrow(/delete|удал/i);
+
+    expect(await source.get("prof_a")).toEqual(entryA);
+  });
+
+  it("throws on partial source deletion failure after deleting only prior ids", async () => {
+    const source = new FailingRemoveVault([entryA, entryB]);
+    const target = new MemVault();
+
+    await expect(migrateVaultEntries({
+      sourceName: "keyring",
+      targetName: "encrypted-file",
+      source,
+      target,
+      cleanup: "delete-source",
+    })).rejects.toThrow(/remove failed/);
+
+    expect(await source.get("prof_a")).toBeNull();
+    expect(await source.get("prof_b")).toEqual(entryB);
   });
 });

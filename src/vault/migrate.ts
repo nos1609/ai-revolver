@@ -19,6 +19,7 @@ export interface VaultMigrationReport {
   target: VaultBackendName;
   copied: number;
   verified: number;
+  verifiedIds: string[];
   deleted: number;
   keptSource: boolean;
 }
@@ -41,6 +42,7 @@ export async function migrateVaultEntries(opts: VaultMigrationOptions): Promise<
   }
 
   let verified = 0;
+  const verifiedIds: string[] = [];
   for (const entry of copiedEntries) {
     const targetEntry = await opts.target.get(entry.profile_id);
     if (!entriesEqual(entry, targetEntry)) {
@@ -50,14 +52,12 @@ export async function migrateVaultEntries(opts: VaultMigrationOptions): Promise<
       ));
     }
     verified += 1;
+    verifiedIds.push(entry.profile_id);
   }
 
   let deleted = 0;
   if (opts.cleanup === "delete-source") {
-    for (const entry of copiedEntries) {
-      await opts.source.remove(entry.profile_id);
-      deleted += 1;
-    }
+    deleted = await deleteVerifiedSourceEntries(opts.source, verifiedIds);
   }
 
   return {
@@ -65,6 +65,7 @@ export async function migrateVaultEntries(opts: VaultMigrationOptions): Promise<
     target: opts.targetName,
     copied: copiedEntries.length,
     verified,
+    verifiedIds,
     deleted,
     keptSource: opts.cleanup !== "delete-source",
   };
@@ -79,6 +80,21 @@ async function assertTargetCanAccept(target: VaultStore, ids: string[], replace:
       `Target vault entry already exists. Use --replace to overwrite.`,
     ));
   }
+}
+
+async function deleteVerifiedSourceEntries(source: VaultStore, verifiedIds: string[]): Promise<number> {
+  let deleted = 0;
+  for (const id of verifiedIds) {
+    await source.remove(id);
+    if (await source.get(id)) {
+      throw new Error(tr(
+        `Source vault сообщил об удалении entry, но entry всё ещё читается.`,
+        `Source vault reported delete success, but the entry is still readable.`,
+      ));
+    }
+    deleted += 1;
+  }
+  return deleted;
 }
 
 function entriesEqual(left: VaultEntry, right: VaultEntry | null): boolean {

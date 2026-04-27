@@ -8,11 +8,15 @@ const promptState = vi.hoisted(() => ({
   nextNewPassword: "new-pw",
   nextNewConfirm: "new-pw",
   keyringAvailable: false,
+  keyringIds: [] as string[],
 }));
 
 vi.mock("../../src/vault/keyring-vault.js", () => ({
   KeyringVault: class {
     static isAvailable = vi.fn(async () => promptState.keyringAvailable);
+    async listIds() {
+      return promptState.keyringIds;
+    }
   },
 }));
 
@@ -49,6 +53,7 @@ beforeEach(async () => {
   promptState.nextNewPassword = "new-pw";
   promptState.nextNewConfirm = "new-pw";
   promptState.keyringAvailable = false;
+  promptState.keyringIds = [];
 });
 
 afterEach(async () => {
@@ -91,6 +96,41 @@ describe("openVault encrypted-file fallback", () => {
     const { openVault } = await importFactory();
 
     await expect(openVault({ confirmNewFilePassword: true })).rejects.toThrow(/match|совпад/i);
+  });
+
+  it("uses keyring when keyring is available and has entries", async () => {
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = ["prof_keyring"];
+    const { openVault } = await importFactory();
+
+    const vault = await openVault({ skipVerify: true });
+
+    expect(await vault.listIds()).toEqual(["prof_keyring"]);
+    expect(promptState.existing).not.toHaveBeenCalled();
+  });
+
+  it("falls back to encrypted-file when keyring is available but empty and vault.enc exists", async () => {
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = [];
+    const configDir = path.join(tempRoot, "ai-revolver");
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(path.join(configDir, "vault.enc"), "{}", "utf-8");
+    const { openVault } = await importFactory();
+
+    await openVault({ skipVerify: true });
+
+    expect(promptState.existing).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps keyring when keyring is available and empty but vault.enc is absent", async () => {
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = [];
+    const { openVault } = await importFactory();
+
+    const vault = await openVault({ skipVerify: true });
+
+    expect(await vault.listIds()).toEqual([]);
+    expect(promptState.existing).not.toHaveBeenCalled();
   });
 });
 
