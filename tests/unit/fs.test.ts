@@ -35,7 +35,18 @@ describe("platform fs", () => {
     await writeJsonFile(file, { ok: true }, 0o600);
 
     const stat = await fs.stat(file);
-    expect(stat.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
+    await expect(readJsonFile(file)).resolves.toEqual({ ok: true });
+  });
+
+  it("writes json on Windows when POSIX permissions are requested", async () => {
+    platformState.platform = "win32";
+    const file = path.join(tempRoot, "vault.enc");
+
+    await writeJsonFile(file, { ok: true }, 0o600);
+
     await expect(readJsonFile(file)).resolves.toEqual({ ok: true });
   });
 
