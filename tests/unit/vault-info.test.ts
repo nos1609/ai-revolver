@@ -1,6 +1,7 @@
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  describeEffectiveVaultBackend,
   getVaultPaths,
   keyringBackendLabel,
   normalizeVaultMigrateTarget,
@@ -9,6 +10,12 @@ import {
 const platformState = vi.hoisted(() => ({
   configDir: "/tmp/airev-vault-info/ai-revolver",
   platform: "linux" as "win32" | "darwin" | "linux",
+}));
+
+const backendState = vi.hoisted(() => ({
+  keyringAvailable: false,
+  keyringIds: [] as string[],
+  encryptedFileExists: false,
 }));
 
 vi.mock("../../src/platform/index.js", async (importOriginal) => {
@@ -20,9 +27,27 @@ vi.mock("../../src/platform/index.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../../src/vault/keyring-vault.js", () => ({
+  KeyringVault: class {
+    static isAvailable = vi.fn(async () => backendState.keyringAvailable);
+    async listIds() {
+      return backendState.keyringIds;
+    }
+  },
+}));
+
+vi.mock("../../src/vault/encrypted-file.js", () => ({
+  EncryptedFileVault: class {
+    static exists = vi.fn(async () => backendState.encryptedFileExists);
+  },
+}));
+
 describe("vault info", () => {
   beforeEach(() => {
     platformState.platform = "linux";
+    backendState.keyringAvailable = false;
+    backendState.keyringIds = [];
+    backendState.encryptedFileExists = false;
   });
 
   it("derives all state paths from the shared config dir", () => {
@@ -56,5 +81,64 @@ describe("vault info", () => {
   it("rejects unsupported migrate targets", () => {
     expect(normalizeVaultMigrateTarget("plaintext")).toBeNull();
     expect(normalizeVaultMigrateTarget(undefined)).toBeNull();
+  });
+});
+
+describe("effective vault backend", () => {
+  beforeEach(() => {
+    platformState.platform = "linux";
+    backendState.keyringAvailable = false;
+    backendState.keyringIds = [];
+    backendState.encryptedFileExists = false;
+  });
+
+  it("uses encrypted-file when keyring is unavailable", async () => {
+    backendState.keyringAvailable = false;
+    backendState.encryptedFileExists = true;
+
+    await expect(describeEffectiveVaultBackend()).resolves.toMatchObject({
+      backend: "encrypted-file",
+      keyringAvailable: false,
+      encryptedFileExists: true,
+    });
+  });
+
+  it("uses keyring when keyring has entries", async () => {
+    backendState.keyringAvailable = true;
+    backendState.keyringIds = ["prof_one"];
+    backendState.encryptedFileExists = true;
+
+    await expect(describeEffectiveVaultBackend()).resolves.toMatchObject({
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 1,
+      encryptedFileExists: true,
+    });
+  });
+
+  it("uses encrypted-file when keyring is empty and vault file exists", async () => {
+    backendState.keyringAvailable = true;
+    backendState.keyringIds = [];
+    backendState.encryptedFileExists = true;
+
+    await expect(describeEffectiveVaultBackend()).resolves.toMatchObject({
+      backend: "encrypted-file",
+      keyringAvailable: true,
+      keyringEntryCount: 0,
+      encryptedFileExists: true,
+    });
+  });
+
+  it("uses keyring when keyring is available and both stores are empty", async () => {
+    backendState.keyringAvailable = true;
+    backendState.keyringIds = [];
+    backendState.encryptedFileExists = false;
+
+    await expect(describeEffectiveVaultBackend()).resolves.toMatchObject({
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 0,
+      encryptedFileExists: false,
+    });
   });
 });

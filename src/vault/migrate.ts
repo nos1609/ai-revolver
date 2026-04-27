@@ -1,8 +1,8 @@
 import type { VaultEntry } from "../types/index.js";
 import type { VaultStore } from "./store.js";
+import type { VaultBackendName } from "./info.js";
 import { tr } from "../i18n.js";
 
-export type VaultBackendName = "keyring" | "encrypted-file";
 export type VaultMigrationCleanup = "keep-source" | "delete-source";
 
 export interface VaultMigrationOptions {
