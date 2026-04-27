@@ -2,6 +2,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   describeEffectiveVaultBackend,
+  describeKeyringStatus,
   getVaultPaths,
   keyringBackendLabel,
   normalizeVaultMigrateTarget,
@@ -17,6 +18,11 @@ const backendState = vi.hoisted(() => ({
   keyringIds: [] as string[],
   encryptedFileExists: false,
   keyringListIds: vi.fn(),
+}));
+
+const linuxKeyringState = vi.hoisted(() => ({
+  status: "available" as "available" | "missing-secret-tool" | "secret-service-unavailable" | "unavailable",
+  detail: undefined as string | undefined,
 }));
 
 vi.mock("../../src/platform/index.js", async (importOriginal) => {
@@ -44,6 +50,14 @@ vi.mock("../../src/vault/encrypted-file.js", () => ({
   },
 }));
 
+vi.mock("../../src/vault/keyring-linux.js", () => ({
+  secretToolAvailable: vi.fn(async () => linuxKeyringState.status === "available"),
+  secretToolStatus: vi.fn(async () => ({
+    status: linuxKeyringState.status,
+    detail: linuxKeyringState.detail,
+  })),
+}));
+
 describe("vault info", () => {
   beforeEach(() => {
     platformState.platform = "linux";
@@ -51,6 +65,8 @@ describe("vault info", () => {
     backendState.keyringIds = [];
     backendState.encryptedFileExists = false;
     backendState.keyringListIds.mockClear();
+    linuxKeyringState.status = "available";
+    linuxKeyringState.detail = undefined;
   });
 
   it("derives all state paths from the shared config dir", () => {
@@ -94,6 +110,8 @@ describe("effective vault backend", () => {
     backendState.keyringIds = [];
     backendState.encryptedFileExists = false;
     backendState.keyringListIds.mockClear();
+    linuxKeyringState.status = "available";
+    linuxKeyringState.detail = undefined;
   });
 
   it("uses encrypted-file when keyring is unavailable", async () => {
@@ -145,6 +163,41 @@ describe("effective vault backend", () => {
       keyringAvailable: true,
       keyringEntryCount: 0,
       encryptedFileExists: false,
+    });
+  });
+});
+
+describe("keyring diagnostics", () => {
+  beforeEach(() => {
+    platformState.platform = "linux";
+    backendState.keyringAvailable = false;
+    linuxKeyringState.status = "available";
+    linuxKeyringState.detail = undefined;
+  });
+
+  it("reports missing secret-tool on Linux", async () => {
+    platformState.platform = "linux";
+    linuxKeyringState.status = "missing-secret-tool";
+
+    await expect(describeKeyringStatus()).resolves.toMatchObject({
+      platform: "linux",
+      label: "Linux libsecret",
+      available: false,
+      reason: "missing-secret-tool",
+    });
+  });
+
+  it("reports unavailable Secret Service on Linux", async () => {
+    platformState.platform = "linux";
+    linuxKeyringState.status = "secret-service-unavailable";
+    linuxKeyringState.detail = "The name is not activatable";
+
+    await expect(describeKeyringStatus()).resolves.toMatchObject({
+      platform: "linux",
+      label: "Linux libsecret",
+      available: false,
+      reason: "secret-service-unavailable",
+      detail: "The name is not activatable",
     });
   });
 });

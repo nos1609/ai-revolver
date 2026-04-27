@@ -45,7 +45,13 @@ export async function secretToolDelete(key: string): Promise<void> {
   ], { timeout: 10000 }).catch(() => {});
 }
 
-export async function secretToolAvailable(): Promise<boolean> {
+export type SecretToolStatus =
+  | { status: "available" }
+  | { status: "missing-secret-tool"; detail?: string }
+  | { status: "secret-service-unavailable"; detail?: string }
+  | { status: "unavailable"; detail?: string };
+
+export async function secretToolStatus(): Promise<SecretToolStatus> {
   try {
     // Do a real lookup — not just binary check. If the secret service daemon
     // isn't running, secret-tool prints "The name is not activatable" to stderr
@@ -53,12 +59,23 @@ export async function secretToolAvailable(): Promise<boolean> {
     const { stderr } = await execFileAsync("secret-tool", [
       "lookup", "service", "ai-revolver-probe", "account", "probe",
     ], { timeout: 5000 });
-    if (stderr && stderr.includes("not activatable")) return false;
-    return true;
+    if (stderr && stderr.includes("not activatable")) {
+      return { status: "secret-service-unavailable", detail: stderr.trim() };
+    }
+    return { status: "available" };
   } catch (err: unknown) {
-    const msg = (err as { stderr?: string }).stderr ?? "";
-    if (msg.includes("not activatable")) return false;
-    // Binary not found or other system error
-    return false;
+    const e = err as { code?: string; stderr?: string; message?: string };
+    const detail = (e.stderr || e.message || "").trim() || undefined;
+    if (e.code === "ENOENT") {
+      return { status: "missing-secret-tool", detail };
+    }
+    if (detail?.includes("not activatable")) {
+      return { status: "secret-service-unavailable", detail };
+    }
+    return { status: "unavailable", detail };
   }
+}
+
+export async function secretToolAvailable(): Promise<boolean> {
+  return (await secretToolStatus()).status === "available";
 }

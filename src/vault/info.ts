@@ -2,6 +2,7 @@ import path from "node:path";
 import { getConfigDir, getPlatform, type Platform } from "../platform/index.js";
 import { EncryptedFileVault } from "./encrypted-file.js";
 import { KeyringVault } from "./keyring-vault.js";
+import { secretToolStatus } from "./keyring-linux.js";
 
 export type VaultBackendName = "keyring" | "encrypted-file";
 export type VaultMigrateTarget = "keyring" | "file";
@@ -20,6 +21,14 @@ export interface EffectiveVaultBackend {
   keyringAvailable: boolean;
   keyringEntryCount: number | null;
   encryptedFileExists: boolean;
+}
+
+export interface KeyringStatus {
+  platform: Platform;
+  label: string;
+  available: boolean;
+  reason?: "missing-secret-tool" | "secret-service-unavailable" | "unavailable";
+  detail?: string;
 }
 
 export function getVaultPaths(): VaultPaths {
@@ -66,5 +75,30 @@ export async function describeEffectiveVaultBackend(): Promise<EffectiveVaultBac
     keyringAvailable,
     keyringEntryCount,
     encryptedFileExists,
+  };
+}
+
+export async function describeKeyringStatus(): Promise<KeyringStatus> {
+  const platform = getPlatform();
+  const label = keyringBackendLabel(platform);
+
+  if (platform === "linux") {
+    const status = await secretToolStatus();
+    if (status.status === "available") {
+      return { platform, label, available: true };
+    }
+    return {
+      platform,
+      label,
+      available: false,
+      reason: status.status,
+      detail: status.detail,
+    };
+  }
+
+  return {
+    platform,
+    label,
+    available: await KeyringVault.isAvailable(),
   };
 }
