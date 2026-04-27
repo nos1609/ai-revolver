@@ -1,5 +1,5 @@
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getVaultPaths,
   keyringBackendLabel,
@@ -21,6 +21,10 @@ vi.mock("../../src/platform/index.js", async (importOriginal) => {
 });
 
 describe("vault info", () => {
+  beforeEach(() => {
+    platformState.platform = "linux";
+  });
+
   it("derives all state paths from the shared config dir", () => {
     const paths = getVaultPaths();
 

@@ -84,9 +84,8 @@ describe("openVault encrypted-file fallback", () => {
   });
 
   it("asks for the existing local vault password without confirmation when vault.enc exists", async () => {
-    const configDir = path.join(tempRoot, "ai-revolver");
-    await fs.mkdir(configDir, { recursive: true });
-    await fs.writeFile(path.join(configDir, "vault.enc"), "{}", "utf-8");
+    await fs.mkdir(configState.configDir, { recursive: true });
+    await fs.writeFile(path.join(configState.configDir, "vault.enc"), "{}", "utf-8");
     const prompt = await import("../../src/vault/prompt.js");
     const { openVault } = await importFactory();
 
@@ -118,9 +117,8 @@ describe("openVault encrypted-file fallback", () => {
   it("falls back to encrypted-file when keyring is available but empty and vault.enc exists", async () => {
     promptState.keyringAvailable = true;
     promptState.keyringIds = [];
-    const configDir = path.join(tempRoot, "ai-revolver");
-    await fs.mkdir(configDir, { recursive: true });
-    await fs.writeFile(path.join(configDir, "vault.enc"), "{}", "utf-8");
+    await fs.mkdir(configState.configDir, { recursive: true });
+    await fs.writeFile(path.join(configState.configDir, "vault.enc"), "{}", "utf-8");
     const { openVault } = await importFactory();
 
     await openVault({ skipVerify: true });
