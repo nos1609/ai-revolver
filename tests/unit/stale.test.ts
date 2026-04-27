@@ -1,24 +1,30 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearStale, getAllStale, isStale, setStale } from "../../src/core/registry.js";
 import { isDeadRefreshError } from "../../src/commands/usage.js";
 
+const configState = vi.hoisted(() => ({
+  configDir: "",
+}));
+
+vi.mock("../../src/platform/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/platform/index.js")>();
+  return {
+    ...actual,
+    getConfigDir: () => configState.configDir,
+  };
+});
+
 let configRoot: string;
-const originalAppData = process.env.APPDATA;
 
 beforeEach(async () => {
   configRoot = await fs.mkdtemp(path.join(os.tmpdir(), "airev-stale-"));
-  process.env.APPDATA = configRoot;
+  configState.configDir = path.join(configRoot, "ai-revolver");
 });
 
 afterEach(async () => {
-  if (originalAppData === undefined) {
-    delete process.env.APPDATA;
-  } else {
-    process.env.APPDATA = originalAppData;
-  }
   await fs.rm(configRoot, { recursive: true, force: true });
 });
 

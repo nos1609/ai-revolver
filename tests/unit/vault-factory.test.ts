@@ -11,6 +11,18 @@ const promptState = vi.hoisted(() => ({
   keyringIds: [] as string[],
 }));
 
+const configState = vi.hoisted(() => ({
+  configDir: "",
+}));
+
+vi.mock("../../src/platform/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/platform/index.js")>();
+  return {
+    ...actual,
+    getConfigDir: () => configState.configDir,
+  };
+});
+
 vi.mock("../../src/vault/keyring-vault.js", () => ({
   KeyringVault: class {
     static isAvailable = vi.fn(async () => promptState.keyringAvailable);
@@ -38,7 +50,6 @@ vi.mock("../../src/vault/prompt.js", async (importOriginal) => {
   };
 });
 
-const originalAppData = process.env.APPDATA;
 let tempRoot: string;
 
 async function importFactory() {
@@ -48,7 +59,7 @@ async function importFactory() {
 
 beforeEach(async () => {
   tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "airev-vault-factory-"));
-  process.env.APPDATA = tempRoot;
+  configState.configDir = path.join(tempRoot, "ai-revolver");
   promptState.existing.mockResolvedValue("existing-pw");
   promptState.nextNewPassword = "new-pw";
   promptState.nextNewConfirm = "new-pw";
@@ -57,11 +68,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  if (originalAppData === undefined) {
-    delete process.env.APPDATA;
-  } else {
-    process.env.APPDATA = originalAppData;
-  }
   await fs.rm(tempRoot, { recursive: true, force: true });
   vi.clearAllMocks();
 });
