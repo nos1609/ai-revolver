@@ -16,6 +16,7 @@ const backendState = vi.hoisted(() => ({
   keyringAvailable: false,
   keyringIds: [] as string[],
   encryptedFileExists: false,
+  keyringListIds: vi.fn(),
 }));
 
 vi.mock("../../src/platform/index.js", async (importOriginal) => {
@@ -31,6 +32,7 @@ vi.mock("../../src/vault/keyring-vault.js", () => ({
   KeyringVault: class {
     static isAvailable = vi.fn(async () => backendState.keyringAvailable);
     async listIds() {
+      backendState.keyringListIds();
       return backendState.keyringIds;
     }
   },
@@ -48,6 +50,7 @@ describe("vault info", () => {
     backendState.keyringAvailable = false;
     backendState.keyringIds = [];
     backendState.encryptedFileExists = false;
+    backendState.keyringListIds.mockClear();
   });
 
   it("derives all state paths from the shared config dir", () => {
@@ -90,6 +93,7 @@ describe("effective vault backend", () => {
     backendState.keyringAvailable = false;
     backendState.keyringIds = [];
     backendState.encryptedFileExists = false;
+    backendState.keyringListIds.mockClear();
   });
 
   it("uses encrypted-file when keyring is unavailable", async () => {
@@ -99,8 +103,10 @@ describe("effective vault backend", () => {
     await expect(describeEffectiveVaultBackend()).resolves.toMatchObject({
       backend: "encrypted-file",
       keyringAvailable: false,
+      keyringEntryCount: null,
       encryptedFileExists: true,
     });
+    expect(backendState.keyringListIds).not.toHaveBeenCalled();
   });
 
   it("uses keyring when keyring has entries", async () => {
