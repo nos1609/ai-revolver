@@ -17,6 +17,7 @@ airev usage <name>                 # по конкретному профилю 
 airev codex usage                  # все профили одного провайдера
 
 airev env --shell powershell       # env-экспорты для shell-хука
+airev completion powershell        # автодополнение для shell
 airev provider list                # доступные провайдеры
 
 airev vault path                   # где лежат registry / active / stale / vault
@@ -42,6 +43,33 @@ airev vault migrate keyring --yes  # copy+verify, затем удалить sour
 - **Транспортный пароль** — пароль export/import-файла. В английской локали это `transfer file password`; он не становится паролем локального `vault.enc`.
 - **Пароль локального vault-а** — пароль только для `vault.enc`; меняется через `vault passwd`, если effective backend сейчас `encrypted-file`. Для OS keyring этот пароль не применяется.
 - **Vault commands** — `vault export/import` основной интерфейс переносимости; `vault migrate <keyring|file>` локально переносит entries между backend-ами через copy → verify → optional delete-source. Если keyring доступен, но пустой, а `vault.enc` существует, обычный CLI читает `vault.enc`; поэтому `migrate file --yes` реально переключает на file-backend, а `--keep-source` остаётся fallback-copy. Старые top-level `export/import` оставлены как совместимые алиасы.
+- **Автодополнение shell** — `airev completion <shell>` печатает скрипт для `bash`, `zsh`, `fish` или `powershell`. Первая версия дополняет команды, провайдеры, действия и флаги, но не имена профилей.
+
+## Автодополнение
+
+PowerShell:
+
+```powershell
+airev completion powershell | Out-String | Invoke-Expression
+```
+
+Bash:
+
+```bash
+eval "$(airev completion bash)"
+```
+
+Zsh:
+
+```zsh
+eval "$(airev completion zsh)"
+```
+
+Fish:
+
+```fish
+airev completion fish | source
+```
 
 ## Поддерживаемые провайдеры
 

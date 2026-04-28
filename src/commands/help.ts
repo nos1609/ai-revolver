@@ -167,6 +167,25 @@ const ACTIONS: Record<string, ActionHelp> = {
     ],
   },
 
+  completion: {
+    synopsis: () => `airev completion [bash|zsh|fish|powershell]`,
+    description: () =>
+      tr(
+        "Печатает shell-скрипт автодополнения для airev. Скрипт можно подключить\n" +
+          "в shell-init. Первая версия дополняет команды, провайдеры, действия и\n" +
+          "флаги, но не имена профилей из локального registry.",
+        "Print a shell completion script for airev. The script can be wired into\n" +
+          "your shell init. The first version completes commands, providers, actions,\n" +
+          "and flags, but not local registry profile names.",
+      ),
+    examples: () => [
+      `airev completion powershell              ${tr("# PowerShell completion", "# PowerShell completion")}`,
+      `airev completion bash                    ${tr("# bash completion", "# bash completion")}`,
+      `airev completion zsh                     ${tr("# zsh completion", "# zsh completion")}`,
+      `airev completion fish                    ${tr("# fish completion", "# fish completion")}`,
+    ],
+  },
+
   export: {
     synopsis: () => `airev vault export [<out>] [--plaintext]`,
     description: () =>

@@ -10,6 +10,7 @@ import { envGen } from "./commands/env-gen.js";
 import { exportProfiles } from "./commands/export.js";
 import { importProfiles } from "./commands/import.js";
 import { vaultCommand } from "./commands/vault.js";
+import { completionCommand } from "./commands/completion.js";
 import { printActionHelp, printProviderHelp, hasActionHelp } from "./commands/help.js";
 import { listProviders } from "./providers/loader.js";
 import { tr, trf } from "./i18n.js";
@@ -36,6 +37,7 @@ function buildHelp(): string {
   airev status                            Все провайдеры (локально, быстро)
   airev usage [<name>]                    Живые rate-limit'ы по всем oauth-профилям или по имени
   airev env [--shell <shell>]             Env-экспорты для shell-хука
+  airev completion [<shell>]              Скрипт автодополнения shell
   airev provider list                     Доступные провайдеры
 
   airev vault path                        Пути registry / active / stale / vault
@@ -55,6 +57,7 @@ function buildHelp(): string {
   airev status                            Show all providers (local, fast)
   airev usage [<name>]                    Live rate-limits for all oauth profiles, or by name
   airev env [--shell <shell>]             Output env exports for shell hook
+  airev completion [<shell>]              Generate shell completion script
   airev provider list                     List available providers
 
   airev vault path                        Show registry / active / stale / vault paths
@@ -116,7 +119,7 @@ ${perLevel}
 `;
 }
 
-const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "vault", "export", "import"]);
+const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "vault", "export", "import", "completion"]);
 const PROVIDER_VERBS = new Set(["grab", "switch", "rename", "drop", "list", "status", "usage"]);
 
 function die(msg: string, hint?: string): never {
@@ -205,6 +208,8 @@ async function main() {
       return usage(undefined, second);
     }
     if (first === "env") return envGen(shell);
+
+    if (first === "completion") return completionCommand(second);
 
     if (first === "vault") {
       return vaultCommand(second, third, {
