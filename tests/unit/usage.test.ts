@@ -7,7 +7,8 @@ import {
   credsEqual,
   fetchUsage,
 } from "../../src/core/usage.js";
-import { isDeadRefreshError } from "../../src/commands/usage.js";
+import { isDeadRefreshError, renderSnapshot } from "../../src/commands/usage.js";
+import { stripAnsi } from "../../src/ui/table.js";
 import type { ProviderDefinition, VaultEntry } from "../../src/types/index.js";
 
 // ── getByPath ────────────────────────────────────────────
@@ -211,6 +212,29 @@ describe("credsEqual", () => {
   it("reference-identical types compared strictly (objects not equal by value)", () => {
     // credsEqual does shallow `!==`; nested objects are distinct refs → false.
     expect(credsEqual({ a: { x: 1 } }, { a: { x: 1 } })).toBe(false);
+  });
+});
+
+// ── snapshot rendering ──────────────────────────────────
+
+describe("renderSnapshot", () => {
+  it("does not repeat verified email when it matches the profile name", () => {
+    const lines = renderSnapshot(
+      { email: "me@example.com", plan: "plus" },
+      "me@example.com",
+    );
+
+    expect(lines.map(stripAnsi)).toEqual(["plus"]);
+  });
+
+  it("shows verified email when it differs from the profile name", () => {
+    const lines = renderSnapshot(
+      { email: "actual@example.com", plan: "team" },
+      "label@example.com",
+    );
+
+    expect(lines.join(" ")).toContain("actual@example.com");
+    expect(lines.join(" ")).toContain("team");
   });
 });
 

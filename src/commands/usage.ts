@@ -52,12 +52,12 @@ function formatWindow(fallbackLabel: string, w: UsageWindow | undefined): string
 /**
  * Render snapshot lines. Email and plan come from the API/JWT — they represent
  * the *verified account identity*, distinct from `profile.name` (which is just
- * a user-chosen label). We always show email when available, even if it
- * textually matches the profile name: the point is confirmation, not dedup.
+ * a user-chosen label). When they match, showing both just looks duplicated;
+ * when they differ, the mismatch is important and stays visible.
  */
-function renderSnapshot(snap: UsageSnapshot): string[] {
+export function renderSnapshot(snap: UsageSnapshot, profileName?: string): string[] {
   const header: string[] = [];
-  if (snap.email) header.push(chalk.cyan(snap.email));
+  if (snap.email && snap.email !== profileName) header.push(chalk.cyan(`→ ${snap.email}`));
   if (snap.plan) header.push(chalk.dim(snap.plan));
 
   const windows: string[] = [];
@@ -234,7 +234,7 @@ export async function usage(
         await clearStale(profile.id);
       }
 
-      const lines = renderSnapshot(result.snapshot);
+      const lines = renderSnapshot(result.snapshot, profile.name);
       // Tag reflects *what we wrote*, not just what we read. If refresh
       // failed, the file creds are proven dead and we didn't write to
       // vault — don't claim "synced".
