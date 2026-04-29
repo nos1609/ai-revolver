@@ -17,3 +17,9 @@
 
 - Do not add a fake remote usage probe until a real Qwen quota API is found.
 - Local estimation can be considered separately, but it should be labelled as local estimation, not account quota.
+
+## Linux vault/keyring
+
+- On the second Linux host, check why OS keyring is unavailable and `airev` falls back to the local encrypted-file vault password.
+- Inspect the local Secret Service/libsecret setup: DBus session, `gnome-keyring` or compatible service, and whether the Node keytar binding can load.
+- Decide whether password fallback is the supported mode for that host, or whether the Linux keyring path should be fixed and covered by a smoke check.
