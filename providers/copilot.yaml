@@ -20,7 +20,7 @@ auth_methods:
   oauth:
     credential_file:
       path: "${HOME}/.copilot/config.json"
-      format: json
+      format: jsonc
       mapping: {}
       grab_fields:
         - "lastLoggedInUser.host"
