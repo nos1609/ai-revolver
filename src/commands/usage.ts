@@ -80,10 +80,22 @@ interface Target {
   isStale: boolean;
 }
 
-export function isDeadRefreshError(status: number, error?: string): boolean {
-  const normalized = (error ?? "").toLowerCase();
+function refreshErrorText(error: unknown): string {
+  if (error === undefined || error === null) return "";
+  if (typeof error === "string") return error;
+  if (typeof error === "number" || typeof error === "boolean") return String(error);
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+export function isDeadRefreshError(status: number, error?: unknown): boolean {
+  const normalized = refreshErrorText(error).toLowerCase();
   return (
     normalized === "invalid_grant" ||
+    normalized.includes("refresh_token_reused") ||
     normalized === "refresh token not found or invalid" ||
     normalized.includes("invalid_grant") ||
     (status === 400 && normalized.includes("refresh token"))
@@ -256,7 +268,8 @@ export async function usage(
         if (isDeadRefreshError(status, error)) {
           await setStale(profile.id);
         }
-        const detail = error ? ` (${error})` : "";
+        const errorText = refreshErrorText(error);
+        const detail = errorText ? ` (${errorText})` : "";
         console.log(
           chalk.yellow(
             trf(`{ind}⚠ refresh не удался → HTTP {status}{detail}`, `{ind}⚠ refresh failed → HTTP {status}{detail}`, {
@@ -274,7 +287,7 @@ export async function usage(
         //     this account's fresh creds → `grab` (upsert) pulls them in
         //     without disturbing active. Otherwise user must log in via CLI
         //     with this account first.
-        if (error === "invalid_grant" || error === "Refresh token not found or invalid") {
+        if (isDeadRefreshError(status, error)) {
           if (result.source === "file") {
             console.log(
               chalk.dim(

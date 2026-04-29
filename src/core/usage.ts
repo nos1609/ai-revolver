@@ -117,6 +117,17 @@ type RefreshResult =
   | { ok: true; credentials: Record<string, unknown> }
   | { ok: false; status: number; error?: string };
 
+function stringifyRefreshError(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * Perform OAuth refresh per provider's `token_refresh` spec.
  *
@@ -152,8 +163,8 @@ async function refreshTokens(
     // Try to surface OAuth error code (invalid_grant, invalid_client, …)
     let err: string | undefined;
     try {
-      const body = (await res.json()) as { error?: string; error_description?: string };
-      err = body.error_description || body.error;
+      const body = (await res.json()) as { error?: unknown; error_description?: unknown };
+      err = stringifyRefreshError(body.error_description) || stringifyRefreshError(body.error);
     } catch { /* body not JSON */ }
     return { ok: false, status: res.status, error: err };
   }

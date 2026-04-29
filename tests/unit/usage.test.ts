@@ -5,7 +5,10 @@ import {
   interpolate,
   applyMapExpr,
   credsEqual,
+  fetchUsage,
 } from "../../src/core/usage.js";
+import { isDeadRefreshError } from "../../src/commands/usage.js";
+import type { ProviderDefinition, VaultEntry } from "../../src/types/index.js";
 
 // ── getByPath ────────────────────────────────────────────
 
@@ -208,5 +211,75 @@ describe("credsEqual", () => {
   it("reference-identical types compared strictly (objects not equal by value)", () => {
     // credsEqual does shallow `!==`; nested objects are distinct refs → false.
     expect(credsEqual({ a: { x: 1 } }, { a: { x: 1 } })).toBe(false);
+  });
+});
+
+// ── refresh error normalization ─────────────────────────
+
+describe("refresh error handling", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizes structured OAuth refresh errors to strings", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { code: "invalid_grant", message: "expired" } }),
+      });
+    vi.stubGlobal("fetch", fetch);
+
+    const provider: ProviderDefinition = {
+      name: "codex",
+      version: 1,
+      auth_methods: {
+        oauth: {
+          credential_file: {
+            path: "unused",
+            format: "json",
+            mapping: {},
+            grab_fields: [],
+            permissions: 0o600,
+            atomic_write: true,
+            preserve_unknown_fields: true,
+          },
+          token_refresh: {
+            url: "https://example.test/token",
+            body: { refresh_token: "${credentials.refresh_token}" },
+            update: {},
+          },
+        },
+      },
+      detection: { commands: [], paths: [] },
+      usage: {
+        probes: [
+          {
+            url: "https://example.test/usage",
+            headers: { authorization: "Bearer ${credentials.access_token}" },
+            map: {},
+          },
+        ],
+      },
+    };
+    const entry: VaultEntry = {
+      profile_id: "prof_a",
+      credentials: { access_token: "dead", refresh_token: "dead" },
+      grab_data: {},
+    };
+
+    const result = await fetchUsage(provider, entry);
+
+    expect(result.refreshError?.error).toBe('{"code":"invalid_grant","message":"expired"}');
+    expect(isDeadRefreshError(result.refreshError?.status ?? 0, result.refreshError?.error)).toBe(true);
+  });
+
+  it("does not throw when checking a non-string refresh error", () => {
+    expect(isDeadRefreshError(400, { code: "invalid_grant" })).toBe(true);
+  });
+
+  it("treats reused refresh tokens as dead", () => {
+    expect(isDeadRefreshError(401, { code: "refresh_token_reused" })).toBe(true);
   });
 });
