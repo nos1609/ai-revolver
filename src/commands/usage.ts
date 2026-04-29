@@ -77,6 +77,10 @@ export interface ObservedUsageIdentity {
   email?: string;
 }
 
+function formatProfileAliases(group: ObservedUsageIdentity[]): string {
+  return group.map((item) => chalk.green(item.profileName)).join(chalk.dim(", "));
+}
+
 export function renderDuplicateDiagnostics(observed: ObservedUsageIdentity[]): string[] {
   const groups = new Map<string, ObservedUsageIdentity[]>();
 
@@ -94,20 +98,16 @@ export function renderDuplicateDiagnostics(observed: ObservedUsageIdentity[]): s
   const lines: string[] = [];
   for (const group of groups.values()) {
     if (group.length < 2) continue;
-    if (lines.length === 0) lines.push(chalk.dim(tr("  диагностика:", "  diagnostics:")));
+    if (lines.length === 0) lines.push(chalk.yellow(tr("  диагностика:", "  diagnostics:")));
     lines.push(
-      chalk.dim(
+      chalk.yellow(
         trf("    найден дубль аккаунта в {provider}:", "    duplicate observed account in {provider}:", {
           provider: group[0].provider,
         }),
       ),
     );
     lines.push(
-      chalk.dim(
-        trf("      профили: {profiles}", "      profiles: {profiles}", {
-          profiles: group.map((item) => item.profileName).join(", "),
-        }),
-      ),
+      chalk.dim(tr("      профили: ", "      profiles: ")) + formatProfileAliases(group),
     );
   }
   return lines;
