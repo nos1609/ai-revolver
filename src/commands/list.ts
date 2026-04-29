@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import { getAllActive, getAllStale, listProfiles } from "../core/registry.js";
 import { tr, trf } from "../i18n.js";
+import { renderTable } from "../ui/table.js";
 
 export async function list(providerFilter?: string): Promise<void> {
   let profiles = await listProfiles();
@@ -27,25 +28,31 @@ export async function list(providerFilter?: string): Promise<void> {
   }
 
   console.log();
-  console.log(
-    chalk.bold(("  " + tr("ПРОФИЛЬ", "PROFILE")).padEnd(22)) +
-    chalk.bold(tr("ПРОВАЙДЕР", "PROVIDER").padEnd(12)) +
-    chalk.bold(tr("AUTH", "AUTH").padEnd(12)) +
-    chalk.bold(tr("СОЗДАН", "CREATED").padEnd(12)) +
-    chalk.bold(tr("СТАТУС", "STATUS")),
-  );
-
-  for (const p of profiles) {
+  const rows = profiles.map((p) => {
     const isActive = active[p.provider] === p.id;
     const isStale = stale.has(p.id);
-    const marker = isActive ? chalk.green("*") : " ";
-    const name = (isStale ? chalk.yellow(p.name.padEnd(18)) : p.name.padEnd(18));
-    const provider = p.provider.padEnd(12);
-    const auth = p.auth_type.padEnd(12);
-    const created = p.created_at.slice(0, 10).padEnd(12);
-    const status = isStale ? chalk.yellow("stale") : "";
+    return {
+      active: { text: isActive ? "*" : " ", color: isActive ? chalk.green : undefined },
+      name: { text: p.name, color: isStale ? chalk.yellow : undefined },
+      provider: p.provider,
+      auth: p.auth_type,
+      created: p.created_at.slice(0, 10),
+      status: { text: isStale ? "stale" : "", color: isStale ? chalk.yellow : undefined },
+    };
+  });
 
-    console.log(`  ${marker} ${name} ${provider}${auth}${created}${status}`);
+  for (const line of renderTable(
+    [
+      { key: "active", header: "", min: 1, max: 1, priority: 9 },
+      { key: "name", header: tr("ПРОФИЛЬ", "PROFILE"), min: 10, max: 32, priority: 0 },
+      { key: "provider", header: tr("ПРОВАЙДЕР", "PROVIDER"), min: 8, max: 16, priority: 1 },
+      { key: "auth", header: "AUTH", min: 6, max: 10, priority: 2 },
+      { key: "created", header: tr("СОЗДАН", "CREATED"), min: 10, max: 10, priority: 8 },
+      { key: "status", header: tr("СТАТУС", "STATUS"), min: 6, max: 10, priority: 7 },
+    ],
+    rows,
+  )) {
+    console.log(line);
   }
 
   console.log();

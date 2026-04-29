@@ -5,6 +5,8 @@ import { openVault } from "../vault/factory.js";
 import { fetchUsage, persistCredentials } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
 import type { Profile, UsageSnapshot, UsageWindow } from "../types/index.js";
+import { renderCells, tableWidths } from "../ui/table.js";
+import type { TableColumn, TableRow } from "../ui/table.js";
 
 // ── Formatters ───────────────────────────────────────────
 
@@ -157,15 +159,29 @@ export async function usage(
   const vault = await openVault();
 
   console.log();
-  // Column layout mirrors `list`: marker first, then provider, then name.
-  // Continuation lines align under the snapshot column (after marker + provider + name gutter).
-  const CONT_INDENT = "    " + " ".repeat(10) + " " + " ".repeat(20) + " "; // 2 + marker(1) + sp + prov(10) + sp + name(20) + sp
+  const columns: TableColumn[] = [
+    { key: "active", header: "", min: 1, max: 1, priority: 9 },
+    { key: "provider", header: tr("ПРОВАЙДЕР", "PROVIDER"), min: 8, max: 16, priority: 1 },
+    { key: "name", header: tr("ПРОФИЛЬ", "PROFILE"), min: 10, max: 28, priority: 0 },
+  ];
+  const layoutRows: TableRow[] = targets.map(({ profile, isActive }) => ({
+    active: isActive ? "*" : " ",
+    provider: profile.provider,
+    name: profile.name,
+  }));
+  const widths = tableWidths(columns, layoutRows);
+  const CONT_INDENT = `  ${widths.map((width) => " ".repeat(width)).join("  ")} `;
+
   for (const { profile, isActive, isStale } of targets) {
     const provider = await loadProvider(profile.provider);
-    const marker = isActive ? chalk.green("*") : " ";
-    const head =
-      `  ${marker} ${chalk.bold(profile.provider.padEnd(10))} ` +
-      `${chalk.green(profile.name.padEnd(20))} `;
+    const head = `${renderCells(
+      [
+        { text: isActive ? "*" : " ", color: isActive ? chalk.green : undefined },
+        { text: profile.provider, color: chalk.bold },
+        { text: profile.name, color: chalk.green },
+      ],
+      widths,
+    )} `;
 
     if (!provider.usage) {
       console.log(`${head} ${chalk.dim(tr("— usage-probes не настроены", "— no usage probes configured"))}`);
