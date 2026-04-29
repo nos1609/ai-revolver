@@ -200,7 +200,7 @@ describe("openVault encrypted-file fallback", () => {
 
     await openVault();
 
-    expect(win.winVerifyIdentity).toHaveBeenCalledWith("Подтвердите доступ к хранилищу учётных данных");
+    expect(win.winVerifyIdentity).toHaveBeenCalledWith("🔑 Подтвердите доступ к хранилищу учётных данных");
     expect(win.winVerifyIdentity).not.toHaveBeenCalledWith("Confirm identity to access credentials");
   });
 
