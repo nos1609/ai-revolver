@@ -51,13 +51,12 @@ function formatWindow(fallbackLabel: string, w: UsageWindow | undefined): string
 
 /**
  * Render snapshot lines. Email and plan come from the API/JWT — they represent
- * the *verified account identity*, distinct from `profile.name` (which is just
- * a user-chosen label). When they match, showing both just looks duplicated;
- * when they differ, the mismatch is important and stays visible.
+ * the *verified account identity*, distinct from `profile.name` (which is a
+ * user-chosen alias and may be arbitrary).
  */
-export function renderSnapshot(snap: UsageSnapshot, profileName?: string): string[] {
+export function renderSnapshot(snap: UsageSnapshot): string[] {
   const header: string[] = [];
-  if (snap.email && snap.email !== profileName) header.push(chalk.cyan(`→ ${snap.email}`));
+  if (snap.email) header.push(chalk.cyan(snap.email));
   if (snap.plan) header.push(chalk.dim(snap.plan));
 
   const windows: string[] = [];
@@ -70,6 +69,48 @@ export function renderSnapshot(snap: UsageSnapshot, profileName?: string): strin
   if (header.length) out.push(header.join("  "));
   if (windows.length) out.push(windows.join("    "));
   return out;
+}
+
+export interface ObservedUsageIdentity {
+  provider: string;
+  profileName: string;
+  email?: string;
+}
+
+export function renderDuplicateDiagnostics(observed: ObservedUsageIdentity[]): string[] {
+  const groups = new Map<string, ObservedUsageIdentity[]>();
+
+  for (const item of observed) {
+    if (!item.email) continue;
+    const key = `${item.provider}\0${item.email.toLowerCase()}`;
+    const group = groups.get(key);
+    if (group) {
+      group.push(item);
+    } else {
+      groups.set(key, [item]);
+    }
+  }
+
+  const lines: string[] = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    if (lines.length === 0) lines.push(chalk.dim(tr("  диагностика:", "  diagnostics:")));
+    lines.push(
+      chalk.dim(
+        trf("    найден дубль аккаунта в {provider}:", "    duplicate observed account in {provider}:", {
+          provider: group[0].provider,
+        }),
+      ),
+    );
+    lines.push(
+      chalk.dim(
+        trf("      профили: {profiles}", "      profiles: {profiles}", {
+          profiles: group.map((item) => item.profileName).join(", "),
+        }),
+      ),
+    );
+  }
+  return lines;
 }
 
 // ── Target resolution ────────────────────────────────────
@@ -169,6 +210,7 @@ export async function usage(
 
   // Open vault once for all targets
   const vault = await openVault();
+  const observedIdentities: ObservedUsageIdentity[] = [];
 
   console.log();
   const columns: TableColumn[] = [
@@ -218,6 +260,11 @@ export async function usage(
       // truth — the file may have rotated tokens we don't have in vault
       // yet (critical for Anthropic's rotating refresh_tokens).
       const result = await fetchUsage(provider, entry, { liveFromFile: isActive });
+      observedIdentities.push({
+        provider: profile.provider,
+        profileName: profile.name,
+        email: result.snapshot.email,
+      });
 
       if (result.updatedCredentials) {
         const updated = await persistCredentials(
@@ -234,7 +281,7 @@ export async function usage(
         await clearStale(profile.id);
       }
 
-      const lines = renderSnapshot(result.snapshot, profile.name);
+      const lines = renderSnapshot(result.snapshot);
       // Tag reflects *what we wrote*, not just what we read. If refresh
       // failed, the file creds are proven dead and we didn't write to
       // vault — don't claim "synced".
@@ -321,6 +368,9 @@ export async function usage(
       const msg = e instanceof Error ? e.message : String(e);
       console.log(`${head} ${chalk.red(trf(`ошибка: {m}`, `error: {m}`, { m: msg }))}`);
     }
+  }
+  for (const line of renderDuplicateDiagnostics(observedIdentities)) {
+    console.log(line);
   }
   console.log();
 }

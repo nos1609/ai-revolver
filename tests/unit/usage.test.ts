@@ -7,7 +7,8 @@ import {
   credsEqual,
   fetchUsage,
 } from "../../src/core/usage.js";
-import { isDeadRefreshError, renderSnapshot } from "../../src/commands/usage.js";
+import { isDeadRefreshError, renderDuplicateDiagnostics, renderSnapshot } from "../../src/commands/usage.js";
+import { LANG } from "../../src/i18n.js";
 import { stripAnsi } from "../../src/ui/table.js";
 import type { ProviderDefinition, VaultEntry } from "../../src/types/index.js";
 
@@ -218,23 +219,45 @@ describe("credsEqual", () => {
 // ── snapshot rendering ──────────────────────────────────
 
 describe("renderSnapshot", () => {
-  it("does not repeat verified email when it matches the profile name", () => {
-    const lines = renderSnapshot(
-      { email: "me@example.com", plan: "plus" },
-      "me@example.com",
-    );
+  it("always shows verified email when present", () => {
+    const lines = renderSnapshot({ email: "me@example.com", plan: "plus" });
 
-    expect(lines.map(stripAnsi)).toEqual(["plus"]);
+    expect(lines.map(stripAnsi)).toEqual(["me@example.com  plus"]);
+  });
+});
+
+// ── duplicate usage diagnostics ─────────────────────────
+
+describe("renderDuplicateDiagnostics", () => {
+  it("reports duplicate observed emails within the same provider", () => {
+    const lines = renderDuplicateDiagnostics([
+      { provider: "codex", profileName: "work", email: "same@example.com" },
+      { provider: "codex", profileName: "main", email: "SAME@example.com" },
+    ]);
+
+    expect(lines.map(stripAnsi)).toEqual([
+      LANG === "ru" ? "  диагностика:" : "  diagnostics:",
+      LANG === "ru" ? "    найден дубль аккаунта в codex:" : "    duplicate observed account in codex:",
+      LANG === "ru" ? "      профили: work, main" : "      profiles: work, main",
+    ]);
   });
 
-  it("shows verified email when it differs from the profile name", () => {
-    const lines = renderSnapshot(
-      { email: "actual@example.com", plan: "team" },
-      "label@example.com",
-    );
+  it("does not treat the same email across different providers as duplicate", () => {
+    const lines = renderDuplicateDiagnostics([
+      { provider: "codex", profileName: "work", email: "same@example.com" },
+      { provider: "claude", profileName: "main", email: "same@example.com" },
+    ]);
 
-    expect(lines.join(" ")).toContain("actual@example.com");
-    expect(lines.join(" ")).toContain("team");
+    expect(lines).toEqual([]);
+  });
+
+  it("ignores profiles without verified email", () => {
+    const lines = renderDuplicateDiagnostics([
+      { provider: "codex", profileName: "work" },
+      { provider: "codex", profileName: "main", email: "main@example.com" },
+    ]);
+
+    expect(lines).toEqual([]);
   });
 });
 
