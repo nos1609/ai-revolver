@@ -44,7 +44,7 @@ export async function writeCredentials(
   // Read current file (or start empty if first run)
   let existing: Record<string, unknown> = {};
   if (await fileExists(filePath)) {
-    existing = await readProviderJsonFile<Record<string, unknown>>(filePath);
+    existing = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
   }
 
   // Write mapping fields (normalised key → original json path)

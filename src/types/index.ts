@@ -24,9 +24,11 @@ export interface ProfileEntry extends Profile {
 
 // ── Provider YAML schema ─────────────────────────────────
 
+export type ProviderCredentialFileFormat = "json" | "jsonc";
+
 export interface ProviderCredentialFile {
   path: string;
-  format: "json";
+  format: ProviderCredentialFileFormat;
   mapping: Record<string, string>;
   grab_fields: string[];
   permissions: number;
@@ -45,7 +47,7 @@ export interface ProviderCredentialSecret {
 
 export interface ProviderExtraFile {
   path: string;
-  format: "json";
+  format: ProviderCredentialFileFormat;
   grab_fields: string[];
   permissions: number;
 }

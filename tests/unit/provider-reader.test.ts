@@ -12,6 +12,40 @@ afterEach(async () => {
 });
 
 describe("provider credential reader", () => {
+  it("reads explicit jsonc credential files with comments and trailing commas", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-provider-reader-jsonc-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "config.json");
+    await writeFile(
+      file,
+      `// User settings belong in settings.json.
+{
+  "lastLoggedInUser": {
+    "host": "https://github.com",
+    "login": "octo",
+  },
+}`,
+    );
+
+    const result = await readCredentials({
+      path: file,
+      format: "jsonc",
+      mapping: {},
+      grab_fields: ["lastLoggedInUser.host", "lastLoggedInUser.login"],
+      permissions: 0o600,
+      atomic_write: true,
+      preserve_unknown_fields: true,
+    });
+
+    expect(result).toEqual({
+      credentials: {},
+      grab_data: {
+        "lastLoggedInUser.host": "https://github.com",
+        "lastLoggedInUser.login": "octo",
+      },
+    });
+  });
+
   it("reads bracket-quoted JSON keys that contain dots", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "airev-provider-reader-"));
     tempDirs.push(dir);

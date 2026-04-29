@@ -34,7 +34,7 @@ export async function readCredentials(
   credentialSecrets: ProviderCredentialSecret[] = [],
 ): Promise<ProfileCredentials> {
   const filePath = resolveTemplatePath(credFile.path);
-  const raw = await readProviderJsonFile<Record<string, unknown>>(filePath);
+  const raw = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
 
   // Extract mapping → credentials (normalised keys)
   const credentials: Record<string, unknown> = {};
