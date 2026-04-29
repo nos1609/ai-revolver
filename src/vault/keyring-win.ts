@@ -75,55 +75,69 @@ export async function dpApiDelete(key: string): Promise<void> {
   await fs.unlink(dpApiFilePath(key)).catch(() => {});
 }
 
+function winRtUserConsentSetup(): string {
+  return `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+
+$null = [Windows.Security.Credentials.UI.UserConsentVerifier,Windows,ContentType=WindowsRuntime]
+$null = [Windows.Security.Credentials.UI.UserConsentVerifierAvailability,Windows,ContentType=WindowsRuntime]
+$null = [Windows.Security.Credentials.UI.UserConsentVerificationResult,Windows,ContentType=WindowsRuntime]
+$null = [Windows.Foundation.IAsyncOperation\`1,Windows.Foundation,ContentType=WindowsRuntime]
+
+function Await-WinRtOperation($operation, [Type] $resultType) {
+    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() |
+        Where-Object {
+            $_.Name -eq 'AsTask' -and
+            $_.IsGenericMethodDefinition -and
+            $_.GetParameters().Count -eq 1
+        } |
+        Select-Object -First 1
+    $task = $asTask.MakeGenericMethod($resultType).Invoke($null, @($operation))
+    $task.Wait()
+    return $task.Result
+}
+`;
+}
+
+export function buildWinVerifyIdentityScript(reason: string): string {
+  return `
+${winRtUserConsentSetup()}
+$availability = Await-WinRtOperation \`
+    ([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()) \`
+    ([Windows.Security.Credentials.UI.UserConsentVerifierAvailability])
+if ($availability -ne [Windows.Security.Credentials.UI.UserConsentVerifierAvailability]::Available) {
+    Write-Output "UNAVAILABLE:$availability"
+    exit 0
+}
+
+$result = Await-WinRtOperation \`
+    ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('${reason.replace(/'/g, "''")}')) \`
+    ([Windows.Security.Credentials.UI.UserConsentVerificationResult])
+if ($result -eq [Windows.Security.Credentials.UI.UserConsentVerificationResult]::Verified) {
+    Write-Output 'OK'
+} else {
+    Write-Output "CANCEL:$result"
+}
+  `;
+}
+
+export function buildWinVerifyAvailableScript(): string {
+  return `
+${winRtUserConsentSetup()}
+$availability = Await-WinRtOperation \`
+    ([Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()) \`
+    ([Windows.Security.Credentials.UI.UserConsentVerifierAvailability])
+if ($availability -eq [Windows.Security.Credentials.UI.UserConsentVerifierAvailability]::Available) { 'yes' } else { 'no' }
+  `;
+}
+
 /**
- * Prompt the user to verify identity via Windows Security (CredUI).
- * Shows the standard Windows credential dialog — supports Hello (PIN/fingerprint/face).
+ * Prompt the user to verify identity via Windows Hello / PIN / biometrics.
  * Returns true if the user verified successfully, false if cancelled/failed.
  */
 export async function winVerifyIdentity(reason: string): Promise<boolean> {
-  const script = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-
-public static class CredUI {
-    [DllImport("credui.dll", CharSet = CharSet.Unicode)]
-    private static extern int CredUIPromptForWindowsCredentialsW(
-        ref CREDUI_INFO pUiInfo, int dwAuthError, ref uint pulAuthPackage,
-        IntPtr pvInAuthBuffer, uint ulInAuthBufferSize,
-        out IntPtr ppvOutAuthBuffer, out uint pulOutAuthBufferSize,
-        ref bool pfSave, int dwFlags);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct CREDUI_INFO {
-        public int cbSize;
-        public IntPtr hwndParent;
-        public string pszMessageText;
-        public string pszCaptionText;
-        public IntPtr hbmBanner;
-    }
-
-    public static bool Verify(string caption, string message) {
-        var info = new CREDUI_INFO();
-        info.cbSize = Marshal.SizeOf(info);
-        info.pszCaptionText = caption;
-        info.pszMessageText = message;
-        uint authPackage = 0;
-        IntPtr outBuf; uint outBufSize; bool save = false;
-        int result = CredUIPromptForWindowsCredentialsW(
-            ref info, 0, ref authPackage,
-            IntPtr.Zero, 0, out outBuf, out outBufSize, ref save, 0);
-        if (outBuf != IntPtr.Zero) Marshal.FreeCoTaskMem(outBuf);
-        return result == 0;
-    }
-}
-"@
-if ([CredUI]::Verify('ai-revolver', '${reason.replace(/'/g, "''")}')) {
-    Write-Output 'OK'
-} else {
-    Write-Output 'CANCEL'
-}
-  `;
+  const script = buildWinVerifyIdentityScript(reason);
   try {
     const { stdout } = await execFileAsync("powershell", [
       "-NoProfile", "-Command", script,
@@ -135,14 +149,13 @@ if ([CredUI]::Verify('ai-revolver', '${reason.replace(/'/g, "''")}')) {
 }
 
 /**
- * Check if CredUI is available (basically always on Windows 10+).
+ * Check if the Windows Hello user consent verifier API is available.
  */
 export async function winVerifyAvailable(): Promise<boolean> {
   try {
-    // credui.dll exists on all Windows 10+
     const { stdout } = await execFileAsync("powershell", [
       "-NoProfile", "-NonInteractive", "-Command",
-      "if (Test-Path \"$env:SystemRoot\\System32\\credui.dll\") { 'yes' } else { 'no' }",
+      buildWinVerifyAvailableScript(),
     ], { timeout: 5000 });
     return stdout.trim() === "yes";
   } catch {
