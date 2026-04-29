@@ -45,7 +45,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
       );
     }
 
-    const result = await readCredentials(oauthDef.credential_file);
+    const result = await readCredentials(oauthDef.credential_file, oauthDef.credential_secrets);
     authType = "oauth";
     credentials = result.credentials;
     grabData = result.grab_data;

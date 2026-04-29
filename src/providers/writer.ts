@@ -1,7 +1,9 @@
-import type { ProviderCredentialFile, ProfileCredentials } from "../types/index.js";
+import type { ProviderCredentialFile, ProviderCredentialSecret, ProfileCredentials } from "../types/index.js";
 import { resolveTemplatePath } from "../platform/index.js";
-import { readJsonFile, writeJsonFile, fileExists } from "../platform/fs.js";
+import { writeJsonFile, fileExists } from "../platform/fs.js";
 import { pathSegments } from "../core/path.js";
+import { setKeytarPassword } from "./keytar.js";
+import { readProviderJsonFile } from "./json.js";
 
 /** Set a nested value by path, creating intermediate objects. */
 function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
@@ -17,6 +19,17 @@ function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown
   current[keys[keys.length - 1]] = value;
 }
 
+function interpolateSecretTemplate(
+  template: string,
+  credentials: Record<string, unknown>,
+  grabData: Record<string, unknown>,
+): string {
+  return template.replace(/\$\{(credentials|grab_data)\.([^}]+)\}/g, (_match, scope: string, key: string) => {
+    const source = scope === "credentials" ? credentials : grabData;
+    return String(source[key] ?? "");
+  });
+}
+
 /**
  * Merge-on-write: read existing file, overlay auth fields, write back.
  * Unknown fields are preserved (mcpOAuth etc.).
@@ -24,13 +37,14 @@ function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown
 export async function writeCredentials(
   credFile: ProviderCredentialFile,
   data: ProfileCredentials,
+  credentialSecrets: ProviderCredentialSecret[] = [],
 ): Promise<void> {
   const filePath = resolveTemplatePath(credFile.path);
 
   // Read current file (or start empty if first run)
   let existing: Record<string, unknown> = {};
   if (await fileExists(filePath)) {
-    existing = await readJsonFile<Record<string, unknown>>(filePath);
+    existing = await readProviderJsonFile<Record<string, unknown>>(filePath);
   }
 
   // Write mapping fields (normalised key → original json path)
@@ -47,4 +61,15 @@ export async function writeCredentials(
 
   const perms = typeof credFile.permissions === "number" ? credFile.permissions : 0o600;
   await writeJsonFile(filePath, existing, perms);
+
+  for (const secret of credentialSecrets) {
+    if (secret.backend !== "keytar") continue;
+    const account = interpolateSecretTemplate(secret.account, data.credentials, data.grab_data);
+    if (!account) continue;
+    for (const [normKey, target] of Object.entries(secret.mapping)) {
+      if (target !== "password") continue;
+      const value = data.credentials[normKey];
+      if (value !== undefined) await setKeytarPassword(secret.service, account, String(value));
+    }
+  }
 }

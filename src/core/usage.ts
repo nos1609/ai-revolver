@@ -373,7 +373,7 @@ async function tryReadLiveCredentials(
   const filePath = resolveTemplatePath(oauth.credential_file.path);
   if (!(await fileExists(filePath))) return null;
   try {
-    const result = await readCredentials(oauth.credential_file);
+    const result = await readCredentials(oauth.credential_file, oauth.credential_secrets);
     return result.credentials;
   } catch {
     return null;
@@ -531,10 +531,14 @@ export async function persistCredentials(
   if (source === "refresh" && isActive) {
     const oauth = provider.auth_methods.oauth;
     if (!oauth) throw new Error(`Provider has no oauth method`);
-    await writeCredentials(oauth.credential_file, {
-      credentials: newCredentials,
-      grab_data: entry.grab_data,
-    });
+    await writeCredentials(
+      oauth.credential_file,
+      {
+        credentials: newCredentials,
+        grab_data: entry.grab_data,
+      },
+      oauth.credential_secrets,
+    );
   }
 
   return { ...entry, credentials: newCredentials };

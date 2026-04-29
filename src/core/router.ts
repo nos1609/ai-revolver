@@ -63,7 +63,7 @@ async function routeFileMerge(
     throw new Error(`Provider "${provider.name}" has no oauth auth method`);
   }
 
-  await writeCredentials(oauthDef.credential_file, data);
+  await writeCredentials(oauthDef.credential_file, data, oauthDef.credential_secrets);
 
   return {
     method: "file_merge",

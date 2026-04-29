@@ -34,6 +34,15 @@ export interface ProviderCredentialFile {
   preserve_unknown_fields: boolean;
 }
 
+export interface ProviderCredentialSecret {
+  backend: "keytar";
+  service: string;
+  /** Template may reference `${grab_data.path}` and `${credentials.field}`. */
+  account: string;
+  /** Normalized credential key -> secret source. Only `password` is supported for keytar. */
+  mapping: Record<string, "password">;
+}
+
 export interface ProviderExtraFile {
   path: string;
   format: "json";
@@ -43,6 +52,7 @@ export interface ProviderExtraFile {
 
 export interface ProviderOAuthMethod {
   credential_file: ProviderCredentialFile;
+  credential_secrets?: ProviderCredentialSecret[];
   extra_files?: ProviderExtraFile[];
   env_on_switch?: Record<string, string>;
   token_refresh?: ProviderTokenRefresh;

@@ -1,12 +1,14 @@
 # GitHub Copilot CLI — profile provider for ai-revolver.
 #
 # Data sources:
-#   - credential file: ~/.copilot/hosts.json
+#   - config file:     ~/.copilot/config.json
+#   - token keychain:  keytar service `copilot-cli`,
+#                      account `https://github.com:<login>`
 #   - usage REST:      GET https://api.github.com/copilot_internal/user
 #
 # Notes:
-#   • This provider intentionally uses the standalone Copilot CLI hosts.json
-#     path. It does not inspect VS Code SecretStorage or running VS Code
+#   • This provider intentionally uses the standalone Copilot CLI config and
+#     keytar store. It does not inspect VS Code SecretStorage or running VS Code
 #     sessions, so `airev usage` stays a plain CLI operation.
 #   • The endpoint is read-only and returns personal quota snapshots when the
 #     OAuth token has access.
@@ -17,15 +19,21 @@ version: 1
 auth_methods:
   oauth:
     credential_file:
-      path: "${HOME}/.copilot/hosts.json"
+      path: "${HOME}/.copilot/config.json"
       format: json
-      mapping:
-        access_token: "['github.com'].oauth_token"
+      mapping: {}
       grab_fields:
-        - "['github.com'].user"
+        - "lastLoggedInUser.host"
+        - "lastLoggedInUser.login"
       permissions: 0o600
       atomic_write: true
       preserve_unknown_fields: true
+    credential_secrets:
+      - backend: keytar
+        service: "copilot-cli"
+        account: "${grab_data.lastLoggedInUser.host}:${grab_data.lastLoggedInUser.login}"
+        mapping:
+          access_token: password
 
 detection:
   commands: ["gh"]
