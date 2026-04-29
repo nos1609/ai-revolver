@@ -300,15 +300,18 @@ export async function usage(
       }
 
       for (const err of result.errors) {
-        console.log(
-          chalk.dim(
-            trf(`{ind}⚠ probe {url} → HTTP {status}`, `{ind}⚠ probe {url} → HTTP {status}`, {
+        const text = err.transient
+          ? trf(
+              `{ind}⚠ probe {url} временно недоступен → HTTP {status}`,
+              `{ind}⚠ probe {url} temporarily unavailable → HTTP {status}`,
+              { ind: CONT_INDENT, url: err.probe, status: err.status },
+            )
+          : trf(`{ind}⚠ probe {url} → HTTP {status}`, `{ind}⚠ probe {url} → HTTP {status}`, {
               ind: CONT_INDENT,
               url: err.probe,
               status: err.status,
-            }),
-          ),
-        );
+            });
+        console.log(err.transient ? chalk.yellow(text) : chalk.dim(text));
       }
       if (result.refreshError) {
         const { status, error } = result.refreshError;

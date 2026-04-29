@@ -1,11 +1,12 @@
 import type { ProviderCredentialFile, ProfileCredentials } from "../types/index.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { readJsonFile } from "../platform/fs.js";
+import { pathSegments } from "../core/path.js";
 
-/** Get a nested value by dot-separated path: "tokens.access_token" */
+/** Get a nested value by path: "tokens.access_token" or "['github.com'].oauth_token". */
 function getByPath(obj: Record<string, unknown>, dotPath: string): unknown {
   let current: unknown = obj;
-  for (const key of dotPath.split(".")) {
+  for (const key of pathSegments(dotPath)) {
     if (current == null || typeof current !== "object") return undefined;
     current = (current as Record<string, unknown>)[key];
   }

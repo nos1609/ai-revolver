@@ -1,10 +1,11 @@
 import type { ProviderCredentialFile, ProfileCredentials } from "../types/index.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { readJsonFile, writeJsonFile, fileExists } from "../platform/fs.js";
+import { pathSegments } from "../core/path.js";
 
-/** Set a nested value by dot-separated path, creating intermediate objects */
+/** Set a nested value by path, creating intermediate objects. */
 function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
-  const keys = dotPath.split(".");
+  const keys = pathSegments(dotPath);
   let current = obj;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];

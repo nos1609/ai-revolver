@@ -1,0 +1,42 @@
+# GitHub Copilot CLI — profile provider for ai-revolver.
+#
+# Data sources:
+#   - credential file: ~/.copilot/hosts.json
+#   - usage REST:      GET https://api.github.com/copilot_internal/user
+#
+# Notes:
+#   • This provider intentionally uses the standalone Copilot CLI hosts.json
+#     path. It does not inspect VS Code SecretStorage or running VS Code
+#     sessions, so `airev usage` stays a plain CLI operation.
+#   • The endpoint is read-only and returns personal quota snapshots when the
+#     OAuth token has access.
+
+name: copilot
+version: 1
+
+auth_methods:
+  oauth:
+    credential_file:
+      path: "${HOME}/.copilot/hosts.json"
+      format: json
+      mapping:
+        access_token: "['github.com'].oauth_token"
+      grab_fields:
+        - "['github.com'].user"
+      permissions: 0o600
+      atomic_write: true
+      preserve_unknown_fields: true
+
+detection:
+  commands: ["gh"]
+  paths: ["${HOME}/.copilot/"]
+
+usage:
+  probes:
+    - url: "https://api.github.com/copilot_internal/user"
+      parser: "copilot_internal_user"
+      headers:
+        Authorization: "Bearer ${credentials.access_token}"
+        Accept: "application/json"
+        User-Agent: "ai-revolver"
+      map: {}

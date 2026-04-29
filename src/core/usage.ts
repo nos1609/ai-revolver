@@ -9,13 +9,14 @@ import { writeCredentials } from "../providers/writer.js";
 import { readCredentials } from "../providers/reader.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
+import { pathSegments } from "./path.js";
 
 // ── Helpers ──────────────────────────────────────────────
 
-/** Nested get by "a.b.c" path. */
+/** Nested get by "a.b.c" path or bracket-quoted literal keys. */
 export function getByPath(obj: unknown, dotPath: string): unknown {
   let cur: unknown = obj;
-  for (const key of dotPath.split(".")) {
+  for (const key of pathSegments(dotPath)) {
     if (cur == null || typeof cur !== "object") return undefined;
     cur = (cur as Record<string, unknown>)[key];
   }
@@ -24,7 +25,7 @@ export function getByPath(obj: unknown, dotPath: string): unknown {
 
 /** Nested set by "a.b.c" path, creating intermediate objects. */
 export function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
-  const keys = dotPath.split(".");
+  const keys = pathSegments(dotPath);
   let cur: Record<string, unknown> = obj;
   for (let i = 0; i < keys.length - 1; i++) {
     const k = keys[i];
@@ -188,14 +189,19 @@ interface ProbeOutcome {
   json?: unknown;
 }
 
+function isTransientProbeStatus(status: number): boolean {
+  return status === 429 || status === 529 || status === 503;
+}
+
 async function runProbe(
   probe: ProviderUsageProbe,
   credentials: Record<string, unknown>,
 ): Promise<ProbeOutcome> {
   const url = interpolate(probe.url, credentials);
   const headers = interpolateMap(probe.headers, credentials);
+  const method = probe.method ?? "GET";
 
-  const res = await fetch(url, { method: "GET", headers });
+  const res = await fetch(url, { method, headers });
   if (!res.ok) return { status: res.status };
 
   try {
@@ -205,11 +211,100 @@ async function runProbe(
   }
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function parseEpochMs(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const ms = Date.parse(String(value));
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+interface CopilotBucket {
+  name: string;
+  used_percent: number;
+}
+
+function getCopilotResetMs(json: unknown): number | undefined {
+  return (
+    parseEpochMs(getByPath(json, "quota_reset_date_utc")) ??
+    parseEpochMs(getByPath(json, "quota_reset_date")) ??
+    parseEpochMs(getByPath(json, "limited_user_reset_date"))
+  );
+}
+
+function copilotBucketFromQuotaSnapshot(json: unknown, name: string): CopilotBucket | undefined {
+  const prefix = `quota_snapshots.${name}`;
+  const quota = finiteNumber(getByPath(json, `${prefix}.entitlement`));
+  const remaining = finiteNumber(getByPath(json, `${prefix}.remaining`));
+  const percentRemaining = finiteNumber(getByPath(json, `${prefix}.percent_remaining`));
+  const unlimited = getByPath(json, `${prefix}.unlimited`) === true || quota === -1;
+  if (unlimited || !quota || quota <= 0) return undefined;
+
+  if (remaining !== undefined) {
+    return { name, used_percent: Math.max(0, Math.min(100, ((quota - remaining) / quota) * 100)) };
+  }
+  if (percentRemaining !== undefined) {
+    return { name, used_percent: Math.max(0, Math.min(100, 100 - percentRemaining)) };
+  }
+  return undefined;
+}
+
+function copilotBucketFromMonthlyQuota(json: unknown, name: "chat" | "completions"): CopilotBucket | undefined {
+  const quota = finiteNumber(getByPath(json, `monthly_quotas.${name}`));
+  const remaining = finiteNumber(getByPath(json, `limited_user_quotas.${name}`));
+  if (!quota || quota <= 0 || remaining === undefined) return undefined;
+  return { name, used_percent: Math.max(0, Math.min(100, ((quota - remaining) / quota) * 100)) };
+}
+
+function applyCopilotInternalUserParser(snapshot: UsageSnapshot, json: unknown): void {
+  const resetMs = getCopilotResetMs(json);
+  const buckets = [
+    copilotBucketFromMonthlyQuota(json, "chat"),
+    copilotBucketFromMonthlyQuota(json, "completions"),
+    copilotBucketFromQuotaSnapshot(json, "chat"),
+    copilotBucketFromQuotaSnapshot(json, "completions"),
+    copilotBucketFromQuotaSnapshot(json, "premium_interactions"),
+    copilotBucketFromQuotaSnapshot(json, "premium_models"),
+  ].filter((bucket): bucket is CopilotBucket => bucket !== undefined);
+
+  const byName = new Map<string, CopilotBucket>();
+  for (const bucket of buckets) {
+    if (!byName.has(bucket.name)) byName.set(bucket.name, bucket);
+  }
+
+  const primary =
+    byName.get("chat") ??
+    byName.get("premium_interactions") ??
+    byName.get("premium_models") ??
+    buckets.slice().sort((a, b) => b.used_percent - a.used_percent)[0];
+  const secondary = byName.get("completions");
+
+  if (primary) {
+    snapshot.primary = { used_percent: Math.round(primary.used_percent) };
+    if (resetMs !== undefined) snapshot.primary.resets_at = resetMs;
+  }
+  if (secondary) {
+    snapshot.secondary = { used_percent: Math.round(secondary.used_percent) };
+    if (resetMs !== undefined) snapshot.secondary.resets_at = resetMs;
+  }
+}
+
 function applyProbeMap(
   snapshot: UsageSnapshot,
   probe: ProviderUsageProbe,
   json: unknown,
 ): void {
+  if (probe.parser === "copilot_internal_user") {
+    applyCopilotInternalUserParser(snapshot, json);
+  }
+
   for (const [field, expr] of Object.entries(probe.map)) {
     const value = applyMapExpr(json, expr);
     if (value === undefined) continue;
@@ -243,7 +338,7 @@ export interface FetchUsageResult {
    */
   source: CredentialsSource;
   /** Probes that still failed after (optional) refresh. */
-  errors: Array<{ probe: string; status: number }>;
+  errors: Array<{ probe: string; status: number; transient?: boolean }>;
   /**
    * Refresh attempt outcome — present only when refresh was triggered.
    * `ok:false` means at least one probe hit 401 AND refresh itself failed
@@ -344,7 +439,7 @@ export async function fetchUsage(
   }
 
   const snapshot: UsageSnapshot = {};
-  const errors: Array<{ probe: string; status: number }> = [];
+  const errors: Array<{ probe: string; status: number; transient?: boolean }> = [];
   let refreshed = false;
   let refreshAttempted = false;
   let refreshError: { status: number; error?: string } | undefined;
@@ -386,7 +481,11 @@ export async function fetchUsage(
     if (outcome.json !== undefined && outcome.status >= 200 && outcome.status < 300) {
       applyProbeMap(snapshot, probe, outcome.json);
     } else {
-      errors.push({ probe: probe.url, status: outcome.status });
+      errors.push({
+        probe: probe.url,
+        status: outcome.status,
+        ...(isTransientProbeStatus(outcome.status) ? { transient: true } : {}),
+      });
     }
   }
 

@@ -330,3 +330,133 @@ describe("refresh error handling", () => {
     expect(isDeadRefreshError(401, { code: "refresh_token_reused" })).toBe(true);
   });
 });
+
+// ── provider-specific usage parsers ─────────────────────
+
+describe("copilot usage parser", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("maps GitHub Copilot internal user quota snapshots to the canonical primary window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-29T10:00:00Z"));
+    const reset = "2026-05-01T00:00:00Z";
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        quota_reset_date_utc: reset,
+        quota_snapshots: {
+          chat: {
+            entitlement: 1000,
+            remaining: 250,
+            percent_remaining: 25,
+          },
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const provider: ProviderDefinition = {
+      name: "copilot",
+      version: 1,
+      auth_methods: {
+        oauth: {
+          credential_file: {
+            path: "unused",
+            format: "json",
+            mapping: {},
+            grab_fields: [],
+            permissions: 0o600,
+            atomic_write: true,
+            preserve_unknown_fields: true,
+          },
+        },
+      },
+      detection: { commands: [], paths: [] },
+      usage: {
+        probes: [
+          {
+            url: "https://api.github.com/copilot_internal/user",
+            parser: "copilot_internal_user",
+            headers: { Authorization: "Bearer ${credentials.access_token}" },
+            map: {},
+          },
+        ],
+      },
+    };
+    const entry: VaultEntry = {
+      profile_id: "copilot_a",
+      credentials: { access_token: "ghu_token" },
+      grab_data: {},
+    };
+
+    const result = await fetchUsage(provider, entry);
+
+    expect(result.snapshot.primary).toEqual({
+      used_percent: 75,
+      resets_at: Date.parse(reset),
+    });
+    expect(result.errors).toEqual([]);
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.github.com/copilot_internal/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer ghu_token" }),
+      }),
+    );
+  });
+});
+
+// ── transient usage probe errors ────────────────────────
+
+describe("usage probe error handling", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("marks rate-limit and overload probe failures as transient", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 })
+      .mockResolvedValueOnce({ ok: false, status: 529 });
+    vi.stubGlobal("fetch", fetch);
+
+    const provider: ProviderDefinition = {
+      name: "claude",
+      version: 1,
+      auth_methods: {
+        oauth: {
+          credential_file: {
+            path: "unused",
+            format: "json",
+            mapping: {},
+            grab_fields: [],
+            permissions: 0o600,
+            atomic_write: true,
+            preserve_unknown_fields: true,
+          },
+        },
+      },
+      detection: { commands: [], paths: [] },
+      usage: {
+        probes: [
+          { url: "https://example.test/profile", map: {} },
+          { url: "https://example.test/usage", map: {} },
+        ],
+      },
+    };
+
+    const result = await fetchUsage(provider, {
+      profile_id: "claude_a",
+      credentials: { access_token: "tok" },
+      grab_data: {},
+    });
+
+    expect(result.errors).toEqual([
+      { probe: "https://example.test/profile", status: 429, transient: true },
+      { probe: "https://example.test/usage", status: 529, transient: true },
+    ]);
+  });
+});

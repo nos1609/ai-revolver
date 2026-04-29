@@ -88,8 +88,12 @@ export interface ProviderDefinition {
 /** A single HTTP probe that produces part of a UsageSnapshot. */
 export interface ProviderUsageProbe {
   url: string;
+  /** HTTP method for the probe. Defaults to GET. */
+  method?: "GET" | "POST";
   /** Header name → template. `${credentials.field}` interpolation. */
   headers?: Record<string, string>;
+  /** Built-in parser for provider responses that are not simple JSON paths. */
+  parser?: "copilot_internal_user";
   /**
    * Map a snapshot field to a JSON-path in the response.
    *   e.g. `email: "user.email"`
