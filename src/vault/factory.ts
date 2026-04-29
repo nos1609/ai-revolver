@@ -64,8 +64,8 @@ async function openKeyringVault(opts: VaultOpenOptions): Promise<VaultStore> {
       "  🔐 Requesting Windows Hello verification...",
     )));
     const verified = await winVerifyIdentity(tr(
-      "🔑 Подтвердите доступ к хранилищу учётных данных",
-      "🔑 Confirm access to the credentials vault",
+      "🔑 Подтвердите доступ к хранилищу учётных данных ai-revolver",
+      "🔑 Confirm access to the ai-revolver credentials vault",
     ));
     if (!verified) {
       throw new Error(tr(
