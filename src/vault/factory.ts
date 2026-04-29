@@ -57,14 +57,26 @@ export async function openVaultBackend(
 }
 
 async function openKeyringVault(opts: VaultOpenOptions): Promise<VaultStore> {
-  // Verify identity via Windows Security (Hello / PIN / password)
+  // Verify identity via Windows Hello / PIN / biometrics.
   if (!opts.skipVerify && await winVerifyAvailable()) {
-    console.log(chalk.dim("  🔐 Requesting identity verification..."));
-    const verified = await winVerifyIdentity("Confirm identity to access credentials");
+    console.log(chalk.dim(tr(
+      "  🔐 Запрашиваю подтверждение через Windows Hello...",
+      "  🔐 Requesting Windows Hello verification...",
+    )));
+    const verified = await winVerifyIdentity(tr(
+      "Подтверди доступ к credentials vault",
+      "Confirm access to the credentials vault",
+    ));
     if (!verified) {
-      throw new Error("Identity verification cancelled.");
+      throw new Error(tr(
+        "Подтверждение Windows Hello отменено.",
+        "Windows Hello verification cancelled.",
+      ));
     }
-    console.log(chalk.dim("  🔓 Vault: verified via Windows Security"));
+    console.log(chalk.dim(tr(
+      "  🔓 Vault: подтверждено через Windows Hello",
+      "  🔓 Vault: verified via Windows Hello",
+    )));
   } else {
     console.log(chalk.dim(trf(
       "  🔓 Vault: {backend}",

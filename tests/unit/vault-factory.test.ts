@@ -9,6 +9,8 @@ const promptState = vi.hoisted(() => ({
   nextNewConfirm: "new-pw",
   keyringAvailable: false,
   keyringIds: [] as string[],
+  winVerifyAvailable: false,
+  winVerifyIdentityResult: true,
 }));
 
 const configState = vi.hoisted(() => ({
@@ -38,8 +40,8 @@ vi.mock("../../src/vault/keyring-vault.js", () => ({
 }));
 
 vi.mock("../../src/vault/keyring-win.js", () => ({
-  winVerifyAvailable: vi.fn(async () => false),
-  winVerifyIdentity: vi.fn(async () => true),
+  winVerifyAvailable: vi.fn(async () => promptState.winVerifyAvailable),
+  winVerifyIdentity: vi.fn(async () => promptState.winVerifyIdentityResult),
 }));
 
 vi.mock("../../src/vault/prompt.js", async (importOriginal) => {
@@ -70,7 +72,10 @@ beforeEach(async () => {
   promptState.nextNewConfirm = "new-pw";
   promptState.keyringAvailable = false;
   promptState.keyringIds = [];
+  promptState.winVerifyAvailable = false;
+  promptState.winVerifyIdentityResult = true;
   platformState.platform = "linux";
+  delete process.env.AIREV_LANG;
 });
 
 afterEach(async () => {
@@ -183,6 +188,20 @@ describe("openVault encrypted-file fallback", () => {
     } finally {
       console.log = originalLog;
     }
+  });
+
+  it("passes localized Russian text into the Windows Hello prompt", async () => {
+    process.env.AIREV_LANG = "ru";
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = ["prof_keyring"];
+    promptState.winVerifyAvailable = true;
+    const { openVault } = await importFactory();
+    const win = await import("../../src/vault/keyring-win.js");
+
+    await openVault();
+
+    expect(win.winVerifyIdentity).toHaveBeenCalledWith("Подтверди доступ к credentials vault");
+    expect(win.winVerifyIdentity).not.toHaveBeenCalledWith("Confirm identity to access credentials");
   });
 });
 
