@@ -200,8 +200,19 @@ describe("openVault encrypted-file fallback", () => {
 
     await openVault();
 
-    expect(win.winVerifyIdentity).toHaveBeenCalledWith("Подтверди доступ к credentials vault");
+    expect(win.winVerifyIdentity).toHaveBeenCalledWith("Подтвердите доступ к хранилищу учётных данных");
     expect(win.winVerifyIdentity).not.toHaveBeenCalledWith("Confirm identity to access credentials");
+  });
+
+  it("throws a localized Russian error when Windows Hello verification is cancelled", async () => {
+    process.env.AIREV_LANG = "ru";
+    promptState.keyringAvailable = true;
+    promptState.keyringIds = ["prof_keyring"];
+    promptState.winVerifyAvailable = true;
+    promptState.winVerifyIdentityResult = false;
+    const { openVault } = await importFactory();
+
+    await expect(openVault()).rejects.toThrow("Подтверждение Windows Hello отменено.");
   });
 });
 
