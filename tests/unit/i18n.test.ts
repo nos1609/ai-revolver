@@ -69,16 +69,6 @@ describe("i18n", () => {
       expect(LANG).toBe("ru");
     });
 
-    it("LANG=C → en", async () => {
-      const { LANG } = await loadI18n({ LANG: "C" });
-      expect(LANG).toBe("en");
-    });
-
-    it("LANG=POSIX → en", async () => {
-      const { LANG } = await loadI18n({ LANG: "POSIX" });
-      expect(LANG).toBe("en");
-    });
-
     it("unknown AIREV_LANG falls through to env detection", async () => {
       const { LANG } = await loadI18n({ AIREV_LANG: "zz", LANG: "ru_RU.UTF-8" });
       expect(LANG).toBe("ru");
@@ -114,6 +104,24 @@ describe("i18n", () => {
         stubIntlLocale("en-US");
         const { LANG } = await loadI18n({});
         expect(LANG).toBe("en");
+      });
+
+      it("LANG=C is neutral and falls through to Intl locale", async () => {
+        stubIntlLocale("ru-RU");
+        const { LANG } = await loadI18n({ LANG: "C" });
+        expect(LANG).toBe("ru");
+      });
+
+      it("LC_ALL=C.UTF-8 is neutral and does not mask Windows locale", async () => {
+        stubIntlLocale("ru-RU");
+        const { LANG } = await loadI18n({ LC_ALL: "C.UTF-8" });
+        expect(LANG).toBe("ru");
+      });
+
+      it("LANG=POSIX is neutral and falls through to Intl locale", async () => {
+        stubIntlLocale("ru-RU");
+        const { LANG } = await loadI18n({ LANG: "POSIX" });
+        expect(LANG).toBe("ru");
       });
 
       it("Intl throwing is caught and falls through to 'en'", async () => {

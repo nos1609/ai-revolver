@@ -28,15 +28,12 @@ function detectLang(): Lang {
     if (l.startsWith("en")) return "en";
   }
 
-  const fromEnv =
-    process.env.LC_ALL ??
-    process.env.LC_MESSAGES ??
-    process.env.LANG ??
-    "";
-  if (fromEnv) {
+  for (const fromEnv of [process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG]) {
+    if (!fromEnv) continue;
     const l = fromEnv.toLowerCase();
     if (l.startsWith("ru")) return "ru";
-    if (l.startsWith("en") || l === "c" || l === "c.utf-8" || l === "posix") return "en";
+    if (l.startsWith("en")) return "en";
+    if (l === "c" || l === "c.utf-8" || l === "posix") continue;
   }
 
   // Windows often doesn't set LANG. Try Intl as a fallback.

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const keyringState = vi.hoisted(() => ({
   available: true,
@@ -59,6 +59,8 @@ const migrateMocks = vi.hoisted(() => ({
   })),
 }));
 
+const originalAirevLang = process.env.AIREV_LANG;
+
 vi.mock("../../src/vault/keyring-vault.js", () => ({
   KeyringVault: class {
     static isAvailable = vi.fn(async () => keyringState.available);
@@ -97,6 +99,8 @@ vi.mock("../../src/vault/migrate.js", () => ({
 }));
 
 afterEach(() => {
+  if (originalAirevLang === undefined) delete process.env.AIREV_LANG;
+  else process.env.AIREV_LANG = originalAirevLang;
   keyringState.available = true;
   keyringState.ids = [];
   keyringState.encryptedFileExists = false;
@@ -113,6 +117,10 @@ afterEach(() => {
   promptMocks.newPassword = "new-pw";
   promptMocks.newConfirm = "new-pw";
   vi.clearAllMocks();
+});
+
+beforeEach(() => {
+  process.env.AIREV_LANG = "en";
 });
 
 describe("vaultCommand migrate", () => {
