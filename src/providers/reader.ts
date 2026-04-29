@@ -57,8 +57,21 @@ export async function readCredentials(
   for (const secret of credentialSecrets) {
     if (secret.backend !== "keytar") continue;
     const account = interpolateSecretTemplate(secret.account, credentials, grab_data);
-    const password = account ? await getKeytarPassword(secret.service, account) : null;
-    if (!password) continue;
+    if (!account) {
+      throw new Error(`System credential store secret account is empty for service=${secret.service}`);
+    }
+
+    let password: string | null;
+    try {
+      password = await getKeytarPassword(secret.service, account);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`System credential store unavailable for backend=keytar service=${secret.service}: ${detail}`);
+    }
+
+    if (!password) {
+      throw new Error(`System credential store secret not found: backend=keytar service=${secret.service} account=${account}`);
+    }
 
     for (const [normKey, source] of Object.entries(secret.mapping)) {
       if (source === "password") credentials[normKey] = password;
