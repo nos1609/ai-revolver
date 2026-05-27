@@ -186,6 +186,28 @@ describe("grab — source resolution", () => {
       undefined,
     );
   });
+
+  it("stale satellite для active main игнорируется — читаем native (MAJOR #2 fix)", async () => {
+    const { grab } = await import("../../src/commands/grab.js");
+    const { satelliteCredentialPath } = await import("../../src/core/satellite.js");
+
+    const satPath = satelliteCredentialPath("codex", "side1", "auth.json");
+    const nativePath = "/fake/home/.codex/auth.json";
+
+    // Одновременно: satellite file существует И isActiveMain = true
+    // native path тоже должен существовать чтобы grab не падал на "file not found"
+    fsMocks.fileExists.mockImplementation(async (p: string) => p === satPath || p === nativePath);
+    registryMocks.isActiveMain.mockResolvedValue(true);
+
+    await grab("codex", "side1", {});
+
+    // Несмотря на satellite file, должен читать из native (undefined)
+    expect(readerMocks.readCredentials).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+    );
+  });
 });
 
 describe("grab — identity capture", () => {

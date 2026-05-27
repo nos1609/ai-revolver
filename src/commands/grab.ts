@@ -38,7 +38,13 @@ async function resolveGrabSource(
   const satCredPath = satelliteCredentialPath(provider.name, profileName, credFileName);
 
   // Rule 1: сателлит существует → читаем из него
+  // Но если это active main — сателлит для него быть не должен (stale state).
+  // В этом случае игнорируем stale satellite и читаем из native.
   if (await fileExists(satCredPath)) {
+    if (await isActiveMain(provider.name, profileName)) {
+      // Stale satellite для active main: игнорируем, читаем native
+      return { kind: "native", path: undefined };
+    }
     return { kind: "satellite", path: satCredPath };
   }
 
