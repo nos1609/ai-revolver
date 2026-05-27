@@ -66,20 +66,12 @@ export function checkIdentity(
 /**
  * Render human-readable identity display string using the provider's display templates.
  *
- * Templates support `${tokens.<field>}` (raw JSON dotted path) and
- * `${grab_fields.<field>}` / `${credentials.<field>}` for backward compatibility.
- *
- * @param provider  Provider definition.
- * @param rawJson   Raw credential JSON (for dotted-path lookup).
- */
-/**
- * Render human-readable identity display string using the provider's display templates.
- *
  * Works with EITHER:
  *   - nested raw JSON (`{ tokens: { account_id: "acc_A" } }`)
  *   - flat vault identity dict (`{ "tokens.account_id": "acc_A" }`)
  *
- * Templates: `${tokens.account_id}`, `${credentials.x}`, `${grab_fields.x}`
+ * Templates: `${tokens.account_id}`, `${credentials.x}`, `${grab_fields.x}`.
+ * Templates referencing keys not present in `source` render as `?` (best-effort display).
  */
 export function renderIdentityDisplay(
   provider: ProviderDefinition,

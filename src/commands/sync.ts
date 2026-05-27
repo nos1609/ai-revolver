@@ -196,14 +196,33 @@ export async function sync(
 
 // ── Helpers ───────────────────────────────────────────────────
 
+/**
+ * Extract last_refresh timestamp from grab_data or raw JSON.
+ * Mirrors the extraction logic in grab.ts:extractLastRefresh.
+ * Returns 0 when the field is absent (treats missing as "oldest").
+ *
+ * Note: mtime-based fallback is intentionally omitted in V1.
+ * Providers that never emit last_refresh will always produce 0,
+ * causing sync to be a no-op unless --force is used.
+ */
 function extractLastRefreshFromRaw(
   grabData: Record<string, unknown>,
   rawJson: Record<string, unknown>,
 ): number {
+  // Try grab_data first (provider explicitly declared last_refresh as grab_field)
   const fromGrab = grabData["last_refresh"];
   if (typeof fromGrab === "number" && Number.isFinite(fromGrab)) return fromGrab;
+  if (typeof fromGrab === "string") {
+    const d = Date.parse(fromGrab);
+    if (Number.isFinite(d)) return d;
+  }
+  // Fallback: raw JSON top-level field
   const fromRaw = rawJson["last_refresh"];
   if (typeof fromRaw === "number" && Number.isFinite(fromRaw)) return fromRaw;
+  if (typeof fromRaw === "string") {
+    const d = Date.parse(fromRaw);
+    if (Number.isFinite(d)) return d;
+  }
   return 0;
 }
 
