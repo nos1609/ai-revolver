@@ -4,6 +4,7 @@ import {
   loadRegistry,
   saveRegistry,
   setActive,
+  clearStale,
 } from "./registry.js";
 import type { VaultStore } from "../vault/store.js";
 import type { Profile, VaultEntry } from "../types/index.js";
@@ -232,6 +233,9 @@ export async function applyImport(
       credentials: incoming.credentials,
       grab_data: incoming.grab_data,
     });
+    // Importing (with or without secrets) supersedes any prior local "stale"
+    // knowledge for this id. The export is the new source of truth.
+    await clearStale(profile.id);
   }
 
   await saveRegistry(reg);

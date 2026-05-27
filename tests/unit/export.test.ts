@@ -7,6 +7,7 @@ import type { VaultStore } from "../../src/vault/store.js";
 const state = {
   reg: { version: 1, profiles: [] as Profile[] } as RegistryData,
   active: {} as Record<string, string>,
+  clearedStale: [] as string[],
 };
 
 vi.mock("../../src/core/registry.js", async () => {
@@ -19,6 +20,9 @@ vi.mock("../../src/core/registry.js", async () => {
     getAllActive: async () => state.active,
     setActive: async (prov: string, id: string) => {
       state.active[prov] = id;
+    },
+    clearStale: async (id: string) => {
+      state.clearedStale.push(id);
     },
   };
 });
@@ -66,6 +70,7 @@ class MemVault implements VaultStore {
 beforeEach(() => {
   state.reg = { version: 1, profiles: [] };
   state.active = {};
+  state.clearedStale = [];
 });
 
 // ── isEncryptedExport ────────────────────────────────────
@@ -186,7 +191,7 @@ describe("applyImport", () => {
     active,
   });
 
-  it("adds a fresh profile + writes vault", async () => {
+  it("adds a fresh profile + writes vault + clears stale for the new id", async () => {
     const vault = new MemVault();
     const incoming = makeExported({ id: "prof_new", name: "n", credentials: { access_token: "t" } });
     const report = await applyImport(basePayload([incoming]), vault, {});
@@ -194,6 +199,7 @@ describe("applyImport", () => {
     expect(report.skippedConflict).toHaveLength(0);
     expect(state.reg.profiles).toHaveLength(1);
     expect(await vault.get("prof_new")).toMatchObject({ credentials: { access_token: "t" } });
+    expect(state.clearedStale).toContain("prof_new");
   });
 
   it("skips when (name, provider) collides and replace=false", async () => {
@@ -208,9 +214,11 @@ describe("applyImport", () => {
     // Vault untouched
     expect(await vault.get("prof_local")).toBeNull();
     expect(await vault.get("prof_other")).toBeNull();
+    // Skipped profiles must not affect stale state — clearStale runs only after a successful write.
+    expect(state.clearedStale).toEqual([]);
   });
 
-  it("replace=true overwrites same (name, provider) but keeps LOCAL id", async () => {
+  it("replace=true overwrites same (name, provider) but keeps LOCAL id + clears stale for it", async () => {
     state.reg.profiles = [makeProfile({ id: "prof_local", name: "alice", provider: "codex" })];
     const vault = new MemVault();
     const incoming = makeExported({
@@ -227,6 +235,8 @@ describe("applyImport", () => {
     // vault written under the LOCAL id, not incoming id
     expect(await vault.get("prof_local")).toMatchObject({ credentials: { access_token: "new_token" } });
     expect(await vault.get("prof_incoming")).toBeNull();
+    // Keeping the local id means stale state attached to that id must be cleared too.
+    expect(state.clearedStale).toContain("prof_local");
   });
 
   it("id collision with different name/provider is skipped (always, even with replace)", async () => {
@@ -239,6 +249,7 @@ describe("applyImport", () => {
     expect(report.replaced).toHaveLength(0);
     expect(state.reg.profiles).toHaveLength(1);
     expect(state.reg.profiles[0].name).toBe("alice");
+    expect(state.clearedStale).toEqual([]);
   });
 
   it("id collision where only provider differs → skippedIdCollision", async () => {
@@ -298,5 +309,22 @@ describe("applyImport", () => {
     await applyImport(basePayload([incoming]), vault, {});
     const entry = await vault.get("prof_empty");
     expect(entry).toMatchObject({ credentials: {}, grab_data: {} });
+  });
+
+  it("clears stale exactly once per imported id, using the kept local id under --replace", async () => {
+    state.reg.profiles = [makeProfile({ id: "prof_stale_work", name: "work", provider: "codex" })];
+    const vault = new MemVault();
+    const incoming = makeExported({
+      id: "prof_fresh_from_other_machine",
+      name: "work",
+      provider: "codex",
+      credentials: { access_token: "live_from_export", refresh_token: "rt_live" },
+    });
+    const report = await applyImport(basePayload([incoming]), vault, { replace: true });
+    expect(report.replaced).toHaveLength(1);
+    expect(state.clearedStale).toEqual(["prof_stale_work"]);
+    expect(await vault.get("prof_stale_work")).toMatchObject({
+      credentials: { access_token: "live_from_export" },
+    });
   });
 });
