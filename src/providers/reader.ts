@@ -28,12 +28,16 @@ function interpolateSecretTemplate(
 /**
  * Read credentials from a provider's credential file.
  * Extracts `mapping` fields → `credentials` and `grab_fields` → `grab_data`.
+ *
+ * @param targetPath  Override the resolved credential file path (used for satellites).
+ *                    When omitted the path from `credFile.path` is used.
  */
 export async function readCredentials(
   credFile: ProviderCredentialFile,
   credentialSecrets: ProviderCredentialSecret[] = [],
+  targetPath?: string,
 ): Promise<ProfileCredentials> {
-  const filePath = resolveTemplatePath(credFile.path);
+  const filePath = targetPath ?? resolveTemplatePath(credFile.path);
   const raw = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
 
   // Extract mapping → credentials (normalised keys)

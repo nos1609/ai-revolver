@@ -198,3 +198,16 @@ export async function getAllStale(): Promise<string[]> {
   const data = await loadStale();
   return data.stale;
 }
+
+// ── Satellite helpers ─────────────────────────────────────
+
+/**
+ * Returns true when the named profile is currently the active main for a provider
+ * (i.e. its credentials live at the native CLI path, not in a satellite directory).
+ */
+export async function isActiveMain(providerName: string, profileName: string): Promise<boolean> {
+  const activeId = await getActive(providerName);
+  if (!activeId) return false;
+  const profile = await getProfileById(activeId);
+  return profile?.name === profileName;
+}

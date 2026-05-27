@@ -33,13 +33,17 @@ function interpolateSecretTemplate(
 /**
  * Merge-on-write: read existing file, overlay auth fields, write back.
  * Unknown fields are preserved (mcpOAuth etc.).
+ *
+ * @param targetPath  Override the resolved credential file path (used for satellites).
+ *                    When omitted the path from `credFile.path` is used.
  */
 export async function writeCredentials(
   credFile: ProviderCredentialFile,
   data: ProfileCredentials,
   credentialSecrets: ProviderCredentialSecret[] = [],
+  targetPath?: string,
 ): Promise<void> {
-  const filePath = resolveTemplatePath(credFile.path);
+  const filePath = targetPath ?? resolveTemplatePath(credFile.path);
 
   // Read current file (or start empty if first run)
   let existing: Record<string, unknown> = {};
