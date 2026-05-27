@@ -5,6 +5,14 @@ import type { ProviderDefinition } from "../types/index.js";
 import { getConfigDir } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 
+/**
+ * Parse a provider definition from a raw YAML string.
+ * Used in tests and for custom-provider validation without requiring a file path.
+ */
+export function loadProviderFromString(yamlText: string): ProviderDefinition {
+  return parseYaml(yamlText) as ProviderDefinition;
+}
+
 /** Directories to scan for provider YAML files, in priority order */
 function getProviderDirs(): string[] {
   const dirs: string[] = [];

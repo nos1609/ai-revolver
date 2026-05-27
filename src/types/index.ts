@@ -81,6 +81,15 @@ export interface ProviderApiKeyMethod {
   env_extra?: Record<string, string>;
 }
 
+export interface ProviderIdentity {
+  /** Credential paths (dotted) whose values define logical identity.
+   *  e.g. ["tokens.account_id"] */
+  fields: string[];
+  /** Human-readable expressions for identity-mismatch error messages.
+   *  May reference `${grab_fields.x}`, `${credentials.x}`, `${tokens.x}`. */
+  display: string[];
+}
+
 export interface ProviderDefinition {
   name: string;
   version: number;
@@ -93,6 +102,8 @@ export interface ProviderDefinition {
     paths: string[];
   };
   usage?: ProviderUsage;
+  /** Optional stable-identity schema for satellite sync. */
+  identity?: ProviderIdentity;
 }
 
 // ── Usage probe schema ───────────────────────────────────
