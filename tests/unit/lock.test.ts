@@ -117,4 +117,37 @@ describe("profile advisory lock", () => {
     const result = await clearLock("codex", "ghost");
     expect(result).toBe(false);
   });
+
+  it("readLockPid returns null for corrupt/non-numeric lockfile content", async () => {
+    const { readLockPid, lockPath } = await import("../../src/core/lock.js");
+
+    const lp = lockPath("codex", "corrupt");
+    await fs.mkdir(path.dirname(lp), { recursive: true });
+    await fs.writeFile(lp, "not-a-pid\n");
+
+    expect(await readLockPid("codex", "corrupt")).toBeNull();
+  });
+
+  it("readLockPid returns null when lockfile is absent", async () => {
+    const { readLockPid } = await import("../../src/core/lock.js");
+    expect(await readLockPid("codex", "missing")).toBeNull();
+  });
+
+  it("withProfileLock throws timeout error when deadline expires", async () => {
+    const { withProfileLock } = await import("../../src/core/lock.js");
+
+    let release!: () => void;
+    const held = withProfileLock("codex", "timeout-test", async () => {
+      await new Promise<void>((r) => { release = r; });
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Another caller with a 200ms timeout — should expire while the first holds
+    await expect(
+      withProfileLock("codex", "timeout-test", async () => {}, { timeoutMs: 200 }),
+    ).rejects.toThrow(/timed out/i);
+
+    release();
+    await held;
+  });
 });
