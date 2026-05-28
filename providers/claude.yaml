@@ -82,3 +82,9 @@ usage:
         primary.resets_at:      "five_hour.resets_at | iso_to_ms"
         secondary.used_percent: "seven_day.utilization"
         secondary.resets_at:    "seven_day.resets_at | iso_to_ms"
+
+identity:
+  fields:
+    - "organizationUuid"
+  display:
+    - "${credentials.organizationUuid}"

@@ -55,3 +55,9 @@ detection:
 
 # No `usage:` section — Qwen Code doesn't expose rate-limit REST that we
 # can probe with the OAuth access token alone.
+
+identity:
+  fields:
+    - "lastLoggedInUser.login"
+  display:
+    - "${tokens.lastLoggedInUser.login}"
