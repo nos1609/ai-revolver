@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { exportProfiles } from "./export.js";
 import { importProfiles } from "./import.js";
 import { tr, trf } from "../i18n.js";
+import { clearLock } from "../core/lock.js";
 import { rekeyEncryptedFileVault } from "../vault/encrypted-file.js";
 import { openVaultBackend } from "../vault/factory.js";
 import {
@@ -13,6 +14,18 @@ import {
 import { migrateVaultEntries, type VaultBackendName } from "../vault/migrate.js";
 import { promptExistingVaultPassword, promptNewVaultPassword } from "../vault/prompt.js";
 import type { VaultStore } from "../vault/store.js";
+
+// ── vault unlock ────────────────────────────────────────────────────────────
+
+export async function vaultUnlock(provider: string, name: string): Promise<boolean> {
+  const cleared = await clearLock(provider, name);
+  if (cleared) {
+    console.log(chalk.green(trf(`  ✓ Lock cleared: {p}/{n}`, `  ✓ Lock cleared: {p}/{n}`, { p: provider, n: name })));
+  } else {
+    console.log(chalk.dim(trf(`  Lock not present: {p}/{n}`, `  Lock not present: {p}/{n}`, { p: provider, n: name })));
+  }
+  return cleared;
+}
 
 export interface VaultCommandOptions {
   plaintext?: boolean;
