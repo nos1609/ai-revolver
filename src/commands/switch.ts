@@ -1,12 +1,40 @@
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
-import { clearStale, getProfile, isStale, setActive } from "../core/registry.js";
+import { clearStale, getActive, getProfile, getProfileById, isStale, setActive } from "../core/registry.js";
 import { routeSwitch } from "../core/router.js";
 import { openVault } from "../vault/factory.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { tr, trf } from "../i18n.js";
+import { sync } from "./sync.js";
 
-export async function switchProfile(providerName: string, profileName: string): Promise<void> {
+export interface SwitchOpts {
+  force?: boolean;
+}
+
+export async function switchProfile(
+  providerName: string,
+  profileName: string,
+  opts: SwitchOpts = {},
+): Promise<void> {
+  // Auto-sync current main before overwriting (unless --force)
+  if (!opts.force) {
+    const activeId = await getActive(providerName);
+    if (activeId) {
+      const activeProfile = await getProfileById(activeId);
+      if (activeProfile && activeProfile.name !== profileName) {
+        await sync(providerName, activeProfile.name).catch((err: unknown) => {
+          throw new Error(
+            trf(
+              `switch aborted: pre-sync на "{n}" завершился с ошибкой:\n  {e}`,
+              `switch aborted: pre-sync on "{n}" failed:\n  {e}`,
+              { n: activeProfile.name, e: String(err) },
+            ),
+          );
+        });
+      }
+    }
+  }
+
   const profile = await getProfile(profileName, providerName);
   if (!profile) {
     throw new Error(
@@ -30,7 +58,6 @@ export async function switchProfile(providerName: string, profileName: string): 
 
   const provider = await loadProvider(profile.provider);
 
-  // Unlock vault (keyring auto or password prompt)
   const vault = await openVault();
   const entry = await vault.get(profile.id);
   if (!entry) {
