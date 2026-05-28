@@ -233,7 +233,12 @@ async function main() {
       if (!third) die(trf(`Использование: airev {p} sync <name>`, `Usage: airev {p} sync <name>`, { p: provider }));
       const dryRun = args.includes("--dry-run");
       const force = args.includes("--force");
-      const direction = args.includes("--push") ? "push" : args.includes("--pull") ? "pull" : undefined;
+      const hasPush = args.includes("--push");
+      const hasPull = args.includes("--pull");
+      if ((hasPush || hasPull) && !force) {
+        die(tr(`--push и --pull требуют --force`, `--push and --pull require --force`));
+      }
+      const direction = hasPush ? "push" : hasPull ? "pull" : undefined;
       return sync(provider, third, { dryRun, force, direction }).then(() => {});
     }
 

@@ -87,4 +87,4 @@ identity:
   fields:
     - "organizationUuid"
   display:
-    - "${credentials.organizationUuid}"
+    - "${organizationUuid}"

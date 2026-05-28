@@ -70,7 +70,11 @@ export function checkIdentity(
  *   - nested raw JSON (`{ tokens: { account_id: "acc_A" } }`)
  *   - flat vault identity dict (`{ "tokens.account_id": "acc_A" }`)
  *
- * Templates: `${tokens.account_id}`, `${credentials.x}`, `${grab_fields.x}`.
+ * Template forms supported:
+ *   - `${tokens.account_id}` — prefixed (legacy; fullPath = "tokens.account_id")
+ *   - `${organizationUuid}` — bare field name (direct lookup, no prefix required)
+ *   - `${lastLoggedInUser.login}` — bare dotted path
+ *
  * Templates referencing keys not present in `source` render as `?` (best-effort display).
  */
 export function renderIdentityDisplay(
@@ -80,10 +84,10 @@ export function renderIdentityDisplay(
   if (!provider.identity) return "";
   return provider.identity.display
     .map((tpl) =>
-      tpl.replace(/\$\{(tokens|credentials|grab_fields)\.([^}]+)\}/g, (_, prefix: string, rest: string) => {
-        const fullPath = `${prefix}.${rest}`;
-        // Try nested path traversal first (raw JSON); fall back to flat key (vault identity)
-        const v = getByPath(source, fullPath) ?? source[fullPath];
+      tpl.replace(/\$\{([^}]+)\}/g, (_, expr: string) => {
+        // Prefixed form: "tokens.x", "credentials.x", "grab_fields.x"
+        // Try full path traversal first (nested raw JSON), then flat key (vault identity)
+        const v = getByPath(source, expr) ?? source[expr];
         return String(v ?? "?");
       }),
     )
