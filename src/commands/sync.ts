@@ -59,6 +59,31 @@ export async function sync(
       );
     }
 
+    // Guard: only OAuth profiles have FS credential files to sync
+    if (profile.auth_type !== "oauth") {
+      throw new Error(
+        trf(
+          `Профиль "{n}" использует auth_type="{t}" — sync применим только для OAuth профилей`,
+          `Profile "{n}" uses auth_type="{t}" — sync only applies to OAuth profiles`,
+          { n: profileName, t: profile.auth_type },
+        ),
+      );
+    }
+
+    // Guard: providers with external secret backends (keytar) cannot be synced for satellites
+    if (oauth.credential_secrets && oauth.credential_secrets.length > 0) {
+      const isMain = await isActiveMain(providerName, profileName);
+      if (!isMain) {
+        throw new Error(
+          trf(
+            `Провайдер "{p}" использует внешний secret backend (keytar) — sync не поддерживается для сателлитов`,
+            `Provider "{p}" uses an external secret backend (keytar) — sync is not supported for satellites`,
+            { p: providerName },
+          ),
+        );
+      }
+    }
+
     // Resolve FS path: active main → native, else → satellite
     const nativePath = resolveTemplatePath(oauth.credential_file.path);
     const fsPath = (await isActiveMain(providerName, profileName))

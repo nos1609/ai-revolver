@@ -219,7 +219,7 @@ async function main() {
   switch (action) {
     case "grab":
       if (!third) die(trf(`Использование: airev {p} grab <name>`, `Usage: airev {p} grab <name>`, { p: provider }));
-      return grab(provider, third, { apiKey });
+      return grab(provider, third, { apiKey, force: args.includes("--force") });
 
     case "switch":
       if (!third) die(trf(`Использование: airev {p} switch <name>`, `Usage: airev {p} switch <name>`, { p: provider }));
@@ -237,6 +237,9 @@ async function main() {
       const hasPull = args.includes("--pull");
       if ((hasPush || hasPull) && !force) {
         die(tr(`--push и --pull требуют --force`, `--push and --pull require --force`));
+      }
+      if (hasPush && hasPull) {
+        die(tr(`--push и --pull взаимоисключающие`, `--push and --pull are mutually exclusive`));
       }
       const direction = hasPush ? "push" : hasPull ? "pull" : undefined;
       return sync(provider, third, { dryRun, force, direction }).then(() => {});

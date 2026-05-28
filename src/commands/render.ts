@@ -51,6 +51,18 @@ export async function render(
       );
     }
 
+    // Guard: providers with external secret backends (keytar) cannot be rendered to satellites
+    // because credential_secrets writes go to the global OS keychain, not satellite-local storage.
+    if (oauth.credential_secrets && oauth.credential_secrets.length > 0) {
+      throw new Error(
+        trf(
+          `Провайдер "{p}" использует внешний secret backend (keytar) — render не поддерживается для сателлитов`,
+          `Provider "{p}" uses an external secret backend (keytar) — render is not supported for satellites`,
+          { p: providerName },
+        ),
+      );
+    }
+
     const profile = await getProfile(profileName, providerName);
     if (!profile) {
       throw new Error(
@@ -58,6 +70,17 @@ export async function render(
           `Профиль "{n}" не найден для провайдера "{p}"`,
           `Profile "{n}" not found for provider "{p}"`,
           { n: profileName, p: providerName },
+        ),
+      );
+    }
+
+    // Guard: only OAuth profiles have FS credential files to render
+    if (profile.auth_type !== "oauth") {
+      throw new Error(
+        trf(
+          `Профиль "{n}" использует auth_type="{t}" — render применим только для OAuth профилей`,
+          `Profile "{n}" uses auth_type="{t}" — render only applies to OAuth profiles`,
+          { n: profileName, t: profile.auth_type },
         ),
       );
     }

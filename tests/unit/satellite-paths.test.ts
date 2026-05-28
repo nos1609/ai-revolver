@@ -16,6 +16,18 @@ describe("satellite paths", () => {
     );
   });
 
+  it("satelliteDir rejects path traversal in name", async () => {
+    const { satelliteDir } = await import("../../src/core/satellite.js");
+    expect(() => satelliteDir("codex", "../../vault.enc")).toThrow(/Invalid profile name/);
+    expect(() => satelliteDir("../evil", "side1")).toThrow(/Invalid provider/);
+    expect(() => satelliteDir("codex", "/absolute")).toThrow(/Invalid profile name/);
+  });
+
+  it("lockPath rejects path traversal", async () => {
+    const { lockPath } = await import("../../src/core/satellite.js");
+    expect(() => lockPath("codex", "../../sensitive")).toThrow(/Invalid profile name/);
+  });
+
   it("satelliteCredentialPath appends the credential filename inside satelliteDir", async () => {
     const { satelliteCredentialPath } = await import("../../src/core/satellite.js");
     expect(satelliteCredentialPath("codex", "side1", "auth.json")).toBe(
