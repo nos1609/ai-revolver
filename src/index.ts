@@ -1,5 +1,8 @@
 import chalk from "chalk";
 import { grab } from "./commands/grab.js";
+import { render } from "./commands/render.js";
+import { sync } from "./commands/sync.js";
+import { evict } from "./commands/evict.js";
 import { switchProfile } from "./commands/switch.js";
 import { list } from "./commands/list.js";
 import { status } from "./commands/status.js";
@@ -9,7 +12,7 @@ import { rename } from "./commands/rename.js";
 import { envGen } from "./commands/env-gen.js";
 import { exportProfiles } from "./commands/export.js";
 import { importProfiles } from "./commands/import.js";
-import { vaultCommand } from "./commands/vault.js";
+import { vaultCommand, vaultUnlock } from "./commands/vault.js";
 import { completionCommand } from "./commands/completion.js";
 import { printActionHelp, printProviderHelp, hasActionHelp } from "./commands/help.js";
 import { buildHelp } from "./commands/top-help.js";
@@ -20,7 +23,7 @@ import { ExitCode } from "./types/index.js";
 const VERSION = "0.2.0";
 
 const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "vault", "export", "import", "completion"]);
-const PROVIDER_VERBS = new Set(["grab", "switch", "rename", "drop", "list", "status", "usage"]);
+const PROVIDER_VERBS = new Set(["grab", "switch", "rename", "drop", "list", "status", "usage", "render", "sync", "evict"]);
 
 function die(msg: string, hint?: string): never {
   console.error(chalk.red(msg));
@@ -112,6 +115,13 @@ async function main() {
     if (first === "completion") return completionCommand(second);
 
     if (first === "vault") {
+      // `airev vault unlock <provider> <name>`
+      if (second === "unlock") {
+        if (!third || !fourth) {
+          die(tr(`Использование: airev vault unlock <provider> <name>`, `Usage: airev vault unlock <provider> <name>`));
+        }
+        return vaultUnlock(third, fourth).then(() => {});
+      }
       return vaultCommand(second, third, {
         plaintext: args.includes("--plaintext"),
         replace: args.includes("--replace"),
@@ -213,7 +223,23 @@ async function main() {
 
     case "switch":
       if (!third) die(trf(`Использование: airev {p} switch <name>`, `Usage: airev {p} switch <name>`, { p: provider }));
-      return switchProfile(provider, third);
+      return switchProfile(provider, third, { force: args.includes("--force") });
+
+    case "render":
+      if (!third) die(trf(`Использование: airev {p} render <name>`, `Usage: airev {p} render <name>`, { p: provider }));
+      return render(provider, third, { force: args.includes("--force") });
+
+    case "sync": {
+      if (!third) die(trf(`Использование: airev {p} sync <name>`, `Usage: airev {p} sync <name>`, { p: provider }));
+      const dryRun = args.includes("--dry-run");
+      const force = args.includes("--force");
+      const direction = args.includes("--push") ? "push" : args.includes("--pull") ? "pull" : undefined;
+      return sync(provider, third, { dryRun, force, direction }).then(() => {});
+    }
+
+    case "evict":
+      if (!third) die(trf(`Использование: airev {p} evict <name>`, `Usage: airev {p} evict <name>`, { p: provider }));
+      return evict(provider, third);
 
     case "rename":
       if (!third || !fourth) die(trf(`Использование: airev {p} rename <old> <new>`, `Usage: airev {p} rename <old> <new>`, { p: provider }));
