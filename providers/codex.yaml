@@ -55,7 +55,7 @@ detection:
 
 # Live rate-limit probes for `airev codex usage`.
 # Each probe is an HTTP GET; fields are extracted into the canonical
-# UsageSnapshot shape: { email?, plan?, primary?, secondary? }.
+# UsageSnapshot shape: { email?, plan?, primary?, secondary?, extras? }.
 #
 # Transforms available after `|`:
 #   epoch_seconds_to_ms    absolute epoch seconds  → epoch ms
@@ -79,6 +79,18 @@ usage:
       map:
         email:                     "email"
         plan:                      "plan_type"
+        primary.used_percent:      "rate_limit.primary_window.used_percent"
+        primary.resets_at:         "rate_limit.primary_window.reset_at | epoch_seconds_to_ms"
+        primary.window_seconds:    "rate_limit.primary_window.limit_window_seconds"
+        secondary.used_percent:    "rate_limit.secondary_window.used_percent"
+        secondary.resets_at:       "rate_limit.secondary_window.reset_at | epoch_seconds_to_ms"
+        secondary.window_seconds:  "rate_limit.secondary_window.limit_window_seconds"
+      # Provider-returned extra limits are opaque display entries, not stable
+      # model ids. The live API currently returns a single object here, but the
+      # plural field may become an array; the core normalizer supports both.
+      extras_source: "additional_rate_limits"
+      extras_map:
+        display:                   "limit_name"
         primary.used_percent:      "rate_limit.primary_window.used_percent"
         primary.resets_at:         "rate_limit.primary_window.reset_at | epoch_seconds_to_ms"
         primary.window_seconds:    "rate_limit.primary_window.limit_window_seconds"

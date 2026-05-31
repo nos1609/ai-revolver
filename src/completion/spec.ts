@@ -18,7 +18,7 @@ export const PROVIDER_ACTIONS = ["grab", "switch", "rename", "drop", "list", "st
 
 export const VAULT_ACTIONS = ["path", "status", "passwd", "migrate", "export", "import"] as const;
 
-export const PROVIDER_ACTION_OPTIONS = ["--api-key", "--help", "-h"] as const;
+export const PROVIDER_ACTION_OPTIONS = ["--api-key", "--force", "--help", "-h"] as const;
 
 export const GLOBAL_OPTIONS = ["--help", "-h", "--version", "-V"] as const;
 

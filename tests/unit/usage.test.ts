@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { parse as parseYaml } from "yaml";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getByPath,
@@ -224,6 +226,45 @@ describe("renderSnapshot", () => {
 
     expect(lines.map(stripAnsi)).toEqual(["me@example.com  plus"]);
   });
+
+  it("renders additional usage limit entries as continuation lines", () => {
+    const lines = renderSnapshot({
+      email: "me@example.com",
+      plan: "plus",
+      primary: { used_percent: 50, window_seconds: 18000 },
+      extras: [
+        {
+          display: "Provider Extra",
+          primary: { used_percent: 25, window_seconds: 18000 },
+          secondary: { used_percent: 80, window_seconds: 604800 },
+        },
+      ],
+    }).map(stripAnsi);
+
+    expect(lines[0]).toBe("me@example.com  plus");
+    expect(lines[1]).toContain("5h:");
+    expect(lines[1]).toContain("50%");
+    expect(lines[2]).toContain("Provider Extra");
+    expect(lines[2]).toContain("5h:");
+    expect(lines[2]).toContain("75%");
+    expect(lines[2]).toContain("7d:");
+    expect(lines[2]).toContain("20%");
+    expect(lines[1].indexOf("5h:")).toBe(lines[2].indexOf("5h:"));
+  });
+
+  it("omits additional usage entries without mapped windows", () => {
+    const lines = renderSnapshot({
+      extras: [
+        { display: "No Windows" },
+        { primary: { used_percent: 10, window_seconds: 18000 } },
+      ],
+    }).map(stripAnsi);
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain("No Windows");
+    expect(lines[0]).toContain("5h:");
+    expect(lines[0]).toContain("90%");
+  });
 });
 
 // ── duplicate usage diagnostics ─────────────────────────
@@ -407,6 +448,371 @@ describe("copilot usage parser", () => {
         headers: expect.objectContaining({ Authorization: "Bearer ghu_token" }),
       }),
     );
+  });
+});
+
+// ── generic additional usage limits ──────────────────────
+
+describe("additional usage limits mapping", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function providerWithExtras(): ProviderDefinition {
+    return {
+      name: "codex",
+      version: 1,
+      auth_methods: {
+        oauth: {
+          credential_file: {
+            path: "unused",
+            format: "json",
+            mapping: {},
+            grab_fields: [],
+            permissions: 0o600,
+            atomic_write: true,
+            preserve_unknown_fields: true,
+          },
+        },
+      },
+      detection: { commands: [], paths: [] },
+      usage: {
+        probes: [
+          {
+            url: "https://chatgpt.com/backend-api/wham/usage",
+            map: {
+              "primary.used_percent": "rate_limit.primary_window.used_percent",
+            },
+            extras_source: "additional_rate_limits",
+            extras_map: {
+              display: "limit_name",
+              "primary.used_percent": "rate_limit.primary_window.used_percent",
+              "primary.resets_at": "rate_limit.primary_window.reset_at | epoch_seconds_to_ms",
+              "primary.window_seconds": "rate_limit.primary_window.limit_window_seconds",
+              "secondary.used_percent": "rate_limit.secondary_window.used_percent",
+              "secondary.resets_at": "rate_limit.secondary_window.reset_at | epoch_seconds_to_ms",
+              "secondary.window_seconds": "rate_limit.secondary_window.limit_window_seconds",
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  const entry: VaultEntry = {
+    profile_id: "codex_a",
+    credentials: { access_token: "tok" },
+    grab_data: {},
+  };
+
+  it("maps a single provider-returned additional limit object without creating a stable key", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        rate_limit: { primary_window: { used_percent: 64 } },
+        additional_rate_limits: {
+          limit_name: "Provider Display Name",
+          metered_feature: "opaque_feature_name",
+          rate_limit: {
+            primary_window: {
+              used_percent: 5,
+              limit_window_seconds: 18000,
+              reset_at: 1779713507,
+            },
+            secondary_window: {
+              used_percent: 22,
+              limit_window_seconds: 604800,
+              reset_at: 1780176059,
+            },
+          },
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+
+    expect(result.snapshot.primary).toEqual({ used_percent: 64 });
+    expect(result.snapshot.extras).toEqual([
+      {
+        display: "Provider Display Name",
+        primary: {
+          used_percent: 5,
+          resets_at: 1779713507 * 1000,
+          window_seconds: 18000,
+        },
+        secondary: {
+          used_percent: 22,
+          resets_at: 1780176059 * 1000,
+          window_seconds: 604800,
+        },
+      },
+    ]);
+    expect(JSON.stringify(result.snapshot.extras)).not.toContain("opaque_feature_name");
+  });
+
+  it("maps additional limit arrays in provider order", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          {
+            limit_name: "First",
+            rate_limit: { primary_window: { used_percent: 10 } },
+          },
+          {
+            limit_name: "Second",
+            rate_limit: { secondary_window: { used_percent: 20 } },
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+
+    expect(result.snapshot.extras).toEqual([
+      { display: "First", primary: { used_percent: 10 } },
+      { display: "Second", secondary: { used_percent: 20 } },
+    ]);
+  });
+
+  it("skips invalid array items and preserves the order of valid additional entries", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          null,
+          "bad",
+          {},
+          { limit_name: "First", rate_limit: { primary_window: { used_percent: 10 } } },
+          { metered_feature: "opaque_only" },
+          { limit_name: "Second", rate_limit: { primary_window: { used_percent: 20 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+
+    expect(result.snapshot.extras).toEqual([
+      { display: "First", primary: { used_percent: 10 } },
+      { display: "Second", primary: { used_percent: 20 } },
+    ]);
+  });
+
+  it("appends additional entries from multiple probes in probe order", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          additional_rate_limits: {
+            limit_name: "First probe",
+            rate_limit: { primary_window: { used_percent: 10 } },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          extras: {
+            limit_name: "Second probe",
+            rate_limit: { secondary_window: { used_percent: 20 } },
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetch);
+
+    const provider = providerWithExtras();
+    provider.usage?.probes.push({
+      url: "https://example.test/second",
+      map: {},
+      extras_source: "extras",
+      extras_map: {
+        display: "limit_name",
+        "secondary.used_percent": "rate_limit.secondary_window.used_percent",
+      },
+    });
+
+    const result = await fetchUsage(provider, entry);
+
+    expect(result.snapshot.extras).toEqual([
+      { display: "First probe", primary: { used_percent: 10 } },
+      { display: "Second probe", secondary: { used_percent: 20 } },
+    ]);
+  });
+
+  it("ignores null or absent additional limit sources", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ additional_rate_limits: null }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetch);
+
+    const nullResult = await fetchUsage(providerWithExtras(), entry);
+    const absentResult = await fetchUsage(providerWithExtras(), entry);
+
+    expect(nullResult.snapshot.extras).toBeUndefined();
+    expect(absentResult.snapshot.extras).toBeUndefined();
+  });
+
+  it("skips additional entries when no mapped display or windows exist", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { metered_feature: "opaque_only" },
+          { limit_name: "Mapped", rate_limit: { primary_window: { used_percent: 1 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+
+    expect(result.snapshot.extras).toEqual([
+      { display: "Mapped", primary: { used_percent: 1 } },
+    ]);
+  });
+
+  it("skips display-only additional entries because they do not contain limits", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { limit_name: "Display only" },
+          { limit_name: "With window", rate_limit: { secondary_window: { used_percent: 2 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+
+    expect(result.snapshot.extras).toEqual([
+      { display: "With window", secondary: { used_percent: 2 } },
+    ]);
+  });
+
+  it("ignores scalar additional limit sources without breaking normal mapping", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        rate_limit: { primary_window: { used_percent: 33 } },
+        additional_rate_limits: "not-an-object",
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+
+    expect(result.snapshot.primary).toEqual({ used_percent: 33 });
+    expect(result.snapshot.extras).toBeUndefined();
+  });
+
+  it("surfaces invalid extras_map transforms like normal usage map errors", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: {
+          limit_name: "Broken",
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const provider = providerWithExtras();
+    const [probe] = provider.usage?.probes ?? [];
+    if (!probe.extras_map) throw new Error("test setup failed");
+    probe.extras_map.display = "limit_name | unknown_transform";
+
+    await expect(fetchUsage(provider, entry)).rejects.toThrow(/Unknown transform/);
+  });
+
+  it("maps Codex provider additional_rate_limits from the bundled YAML", async () => {
+    const codex = parseYaml(readFileSync("providers/codex.yaml", "utf8")) as ProviderDefinition;
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        email: "me@example.com",
+        plan_type: "prolite",
+        rate_limit: {
+          primary_window: {
+            used_percent: 64,
+            limit_window_seconds: 18000,
+            reset_at: 1779701871,
+          },
+          secondary_window: {
+            used_percent: 56,
+            limit_window_seconds: 604800,
+            reset_at: 1780175641,
+          },
+        },
+        additional_rate_limits: {
+          limit_name: "Provider Extra",
+          metered_feature: "opaque_feature",
+          rate_limit: {
+            primary_window: {
+              used_percent: 5,
+              limit_window_seconds: 18000,
+              reset_at: 1779713507,
+            },
+            secondary_window: {
+              used_percent: 22,
+              limit_window_seconds: 604800,
+              reset_at: 1780176059,
+            },
+          },
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(codex, {
+      profile_id: "codex_a",
+      credentials: { access_token: "tok", account_id: "acct" },
+      grab_data: {},
+    });
+
+    expect(result.snapshot).toMatchObject({
+      email: "me@example.com",
+      plan: "prolite",
+      primary: {
+        used_percent: 64,
+        resets_at: 1779701871 * 1000,
+        window_seconds: 18000,
+      },
+      secondary: {
+        used_percent: 56,
+        resets_at: 1780175641 * 1000,
+        window_seconds: 604800,
+      },
+      extras: [
+        {
+          display: "Provider Extra",
+          primary: {
+            used_percent: 5,
+            resets_at: 1779713507 * 1000,
+            window_seconds: 18000,
+          },
+          secondary: {
+            used_percent: 22,
+            resets_at: 1780176059 * 1000,
+            window_seconds: 604800,
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(result.snapshot.extras)).not.toContain("opaque_feature");
   });
 });
 

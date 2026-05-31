@@ -52,10 +52,12 @@ export function buildHelp(providers: string[]): string {
 
   const options = tr(
     `  --api-key <key>                         API key вместо OAuth (для grab)
+  --force                                 Разобрать как флаг, не как имя профиля
   --shell <shell>                         Тип shell: bash, zsh, fish, powershell
   --version                               Версия
   --help                                  Эта справка`,
     `  --api-key <key>                         Use API key instead of OAuth (for grab)
+  --force                                 Parse as a flag, not as a profile name
   --shell <shell>                         Shell type: bash, zsh, fish, powershell
   --version                               Show version
   --help                                  Show this help`,

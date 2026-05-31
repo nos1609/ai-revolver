@@ -124,6 +124,17 @@ export interface ProviderUsageProbe {
    *        `primary.resets_at: "rate_limit.resets_in_seconds | now_ms_plus_seconds"`
    */
   map: Record<string, string>;
+  /**
+   * Dot-path to provider-returned additional limit entries.
+   * The source may be a single object or an array of objects; non-objects are
+   * ignored. Entries are opaque and preserve provider order.
+   */
+  extras_source?: string;
+  /**
+   * Field mappings applied relative to each `extras_source` entry.
+   * Use display-only provider text here; never derive stable ids from it.
+   */
+  extras_map?: Record<string, string>;
 }
 
 export interface ProviderUsage {
@@ -150,12 +161,25 @@ export interface UsageWindow {
   window_seconds?: number;
 }
 
+/** One opaque provider-returned additional rate-limit entry. */
+export interface AdditionalLimitEntry {
+  /**
+   * Provider-provided display text only.
+   * Never use it as a stable id, key, switch discriminator, or comparison value.
+   */
+  display?: string;
+  primary?: UsageWindow;
+  secondary?: UsageWindow;
+}
+
 /** Canonical normalized shape across all providers. */
 export interface UsageSnapshot {
   email?: string;
   plan?: string;
   primary?: UsageWindow;
   secondary?: UsageWindow;
+  /** Additional provider-returned limit entries, preserving provider order. */
+  extras?: AdditionalLimitEntry[];
 }
 
 // ── Registry ─────────────────────────────────────────────

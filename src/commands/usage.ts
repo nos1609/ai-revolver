@@ -49,6 +49,32 @@ function formatWindow(fallbackLabel: string, w: UsageWindow | undefined): string
   return `${chalk.bold(label)}: ${pctStr}${resets}`;
 }
 
+function formatWindowPair(
+  primaryFallback: string,
+  secondaryFallback: string,
+  primary: UsageWindow | undefined,
+  secondary: UsageWindow | undefined,
+): string {
+  const windows: string[] = [];
+  const p = formatWindow(primaryFallback, primary);
+  const s = formatWindow(secondaryFallback, secondary);
+  if (p) windows.push(p);
+  if (s) windows.push(s);
+  return windows.join("    ");
+}
+
+function formatExtraWindowLine(
+  extra: NonNullable<UsageSnapshot["extras"]>[number],
+  labelWidth: number,
+): string {
+  const windows = formatWindowPair("primary", "secondary", extra.primary, extra.secondary);
+  if (!windows) return "";
+
+  if (labelWidth === 0) return windows;
+  const label = (extra.display ?? "").padEnd(labelWidth);
+  return `${chalk.dim(label)}  ${windows}`;
+}
+
 /**
  * Render snapshot lines. Email and plan come from the API/JWT — they represent
  * the *verified account identity*, distinct from `profile.name` (which is a
@@ -59,15 +85,25 @@ export function renderSnapshot(snap: UsageSnapshot): string[] {
   if (snap.email) header.push(chalk.cyan(snap.email));
   if (snap.plan) header.push(chalk.dim(snap.plan));
 
-  const windows: string[] = [];
-  const p = formatWindow("5h", snap.primary);
-  const s = formatWindow("7d", snap.secondary);
-  if (p) windows.push(p);
-  if (s) windows.push(s);
+  const windows = formatWindowPair("5h", "7d", snap.primary, snap.secondary);
+  const extraRows = (snap.extras ?? [])
+    .map((extra) => ({
+      extra,
+      windows: formatWindowPair("primary", "secondary", extra.primary, extra.secondary),
+    }))
+    .filter((row) => row.windows);
+  const labelWidth = extraRows.reduce((max, row) => Math.max(max, row.extra.display?.length ?? 0), 0);
 
   const out: string[] = [];
   if (header.length) out.push(header.join("  "));
-  if (windows.length) out.push(windows.join("    "));
+  if (windows) {
+    const labelPad = labelWidth > 0 ? `${" ".repeat(labelWidth)}  ` : "";
+    out.push(`${labelPad}${windows}`);
+  }
+  for (const { extra } of extraRows) {
+    const line = formatExtraWindowLine(extra, labelWidth);
+    if (line) out.push(line);
+  }
   return out;
 }
 
