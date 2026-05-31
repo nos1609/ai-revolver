@@ -1,4 +1,5 @@
 import type {
+  AdditionalLimitEntry,
   ProviderDefinition,
   ProviderTokenRefresh,
   ProviderUsageProbe,
@@ -296,6 +297,45 @@ function applyCopilotInternalUserParser(snapshot: UsageSnapshot, json: unknown):
   }
 }
 
+function normalizeToArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value !== null && typeof value === "object") return [value];
+  return [];
+}
+
+function hasMappedExtra(entry: AdditionalLimitEntry): boolean {
+  // Extras are intentionally display/window-only. Opaque provider metadata that
+  // is not mapped into usage windows is ignored instead of becoming an implicit id.
+  return entry.primary !== undefined || entry.secondary !== undefined;
+}
+
+function applyProbeExtras(
+  snapshot: UsageSnapshot,
+  probe: ProviderUsageProbe,
+  json: unknown,
+): void {
+  if (!probe.extras_source || !probe.extras_map) return;
+
+  const raw = getByPath(json, probe.extras_source);
+  const entries = normalizeToArray(raw);
+  if (entries.length === 0) return;
+
+  const mapped: AdditionalLimitEntry[] = [];
+  for (const sourceEntry of entries) {
+    const extra: AdditionalLimitEntry = {};
+    for (const [field, expr] of Object.entries(probe.extras_map)) {
+      const value = applyMapExpr(sourceEntry, expr);
+      if (value === undefined) continue;
+      setByPath(extra as unknown as Record<string, unknown>, field, value);
+    }
+    if (hasMappedExtra(extra)) mapped.push(extra);
+  }
+
+  if (mapped.length === 0) return;
+  snapshot.extras ??= [];
+  snapshot.extras.push(...mapped);
+}
+
 function applyProbeMap(
   snapshot: UsageSnapshot,
   probe: ProviderUsageProbe,
@@ -310,6 +350,8 @@ function applyProbeMap(
     if (value === undefined) continue;
     setByPath(snapshot as unknown as Record<string, unknown>, field, value);
   }
+
+  applyProbeExtras(snapshot, probe, json);
 }
 
 // ── Public entry ─────────────────────────────────────────

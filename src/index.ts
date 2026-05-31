@@ -13,11 +13,12 @@ import { vaultCommand } from "./commands/vault.js";
 import { completionCommand } from "./commands/completion.js";
 import { printActionHelp, printProviderHelp, hasActionHelp } from "./commands/help.js";
 import { buildHelp } from "./commands/top-help.js";
+import { hasOption, optionValue, parseArgs } from "./cli/args.js";
 import { listProviders } from "./providers/loader.js";
 import { tr, trf } from "./i18n.js";
 import { ExitCode } from "./types/index.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 
 const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "vault", "export", "import", "completion"]);
 const PROVIDER_VERBS = new Set(["grab", "switch", "rename", "drop", "list", "status", "usage"]);
@@ -30,17 +31,15 @@ function die(msg: string, hint?: string): never {
 
 async function main() {
   const args = process.argv.slice(2);
+  const parsed = parseArgs(args);
 
-  if (args.includes("--version") || args.includes("-V")) {
+  if (hasOption(parsed, "--version", "-V")) {
     console.log(VERSION);
     return;
   }
 
-  const wantsHelp = args.includes("--help") || args.includes("-h");
-
-  // Drop help flags from positional parsing so `airev codex grab -h` still
-  // routes as provider=codex, action=grab (not action="-h").
-  const positional = args.filter((a) => a !== "--help" && a !== "-h");
+  const wantsHelp = hasOption(parsed, "--help", "-h");
+  const positional = parsed.positionals;
 
   // Top-level: no args, or only help flags.
   if (positional.length === 0) {
@@ -83,10 +82,15 @@ async function main() {
     return;
   }
 
-  const apiKeyIdx = args.indexOf("--api-key");
-  const apiKey = apiKeyIdx >= 0 ? args[apiKeyIdx + 1] : undefined;
-  const shellIdx = args.indexOf("--shell");
-  const shell = shellIdx >= 0 ? args[shellIdx + 1] : undefined;
+  if (parsed.unknownOptions.length > 0) {
+    die(
+      trf(`Неизвестная или неполная опция: {opt}`, `Unknown or incomplete option: {opt}`, { opt: parsed.unknownOptions[0] }),
+      tr(`Если это имя профиля, используй '--' перед ним.`, `If this is a profile name, put '--' before it.`),
+    );
+  }
+
+  const apiKey = optionValue(parsed, "--api-key");
+  const shell = optionValue(parsed, "--shell");
 
   // ── Global commands (no positional provider filter) ──────
 
@@ -113,18 +117,18 @@ async function main() {
 
     if (first === "vault") {
       return vaultCommand(second, third, {
-        plaintext: args.includes("--plaintext"),
-        replace: args.includes("--replace"),
-        restoreActive: args.includes("--restore-active"),
-        yes: args.includes("--yes"),
-        keepSource: args.includes("--keep-source"),
+        plaintext: hasOption(parsed, "--plaintext"),
+        replace: hasOption(parsed, "--replace"),
+        restoreActive: hasOption(parsed, "--restore-active"),
+        yes: hasOption(parsed, "--yes"),
+        keepSource: hasOption(parsed, "--keep-source"),
       });
     }
 
     if (first === "export") {
-      const plaintext = args.includes("--plaintext");
+      const plaintext = hasOption(parsed, "--plaintext");
       // Positional out-path: anything after `export` that isn't a flag.
-      const outPath = args.slice(1).find((a) => !a.startsWith("--"));
+      const outPath = positional.slice(1)[0];
       return exportProfiles({ outPath, plaintext });
     }
 
@@ -136,8 +140,8 @@ async function main() {
         ));
       }
       return importProfiles(second, {
-        replace: args.includes("--replace"),
-        restoreActive: args.includes("--restore-active"),
+        replace: hasOption(parsed, "--replace"),
+        restoreActive: hasOption(parsed, "--restore-active"),
       });
     }
 

@@ -17,7 +17,7 @@ interface ActionHelp {
 
 const ACTIONS: Record<string, ActionHelp> = {
   grab: {
-    synopsis: (p) => `airev ${p ?? "<provider>"} grab <name> [--api-key <key>]`,
+    synopsis: (p) => `airev ${p ?? "<provider>"} grab [--force] <name> [--api-key <key>]`,
     description: () =>
       tr(
         "Забирает текущую сессию из credential-файла CLI и сохраняет её как профиль.\n" +
@@ -38,6 +38,7 @@ const ACTIONS: Record<string, ActionHelp> = {
     examples: (p) => [
       `airev ${p ?? "codex"} grab work                       ${tr("# первый раз (создаёт, делает active)", "# first-time grab (creates, sets active)")}`,
       `airev ${p ?? "codex"} grab work                       ${tr("# повторно — обновляет vault из файла, id и active не трогает", "# again — updates vault from CLI file, keeps id & active")}`,
+      `airev ${p ?? "codex"} grab --force work               ${tr("# то же самое; --force не становится именем профиля", "# same; --force is not treated as a profile name")}`,
       `airev ${p ?? "codex"} grab work --api-key sk-...      ${tr("# профиль на API key вместо OAuth", "# register an API-key profile instead")}`,
     ],
   },

@@ -92,10 +92,91 @@ airev completion fish | source
 
 ```bash
 npm install
+npm test
 npm run build      # tsup → dist/
-npm link           # глобальный airev → junction на этот workspace (Windows)
 airev --help
 ```
 
-> Без `npm link` глобальный `airev` в `%APPDATA%\npm\node_modules\ai-revolver`
-> остаётся **копией** — изменения в src/ не подхватываются.
+### Локальная dev-установка
+
+`npm link` удобен только для разработки на той же машине, где лежит workspace:
+
+```bash
+npm link
+which airev       # Linux/macOS
+where.exe airev   # Windows
+airev --version
+```
+
+Без `npm link` глобальный `airev` остаётся копией в global npm prefix и изменения
+в `src/` не подхватывает:
+
+- Windows: `%APPDATA%\npm\node_modules\ai-revolver`
+- Linux/macOS: смотри `npm root -g`
+
+### Сборка installable tarball
+
+Для установки на другую машину собирай npm tarball:
+
+```bash
+npm ci
+npm test
+npm run build
+npm pack
+```
+
+На выходе будет файл вида:
+
+```text
+ai-revolver-<version>.tgz
+```
+
+Проверить содержимое без создания архива:
+
+```bash
+npm pack --dry-run
+```
+
+### Установка tarball на Linux
+
+Если tarball собран на другой машине, сначала перенеси его на Linux:
+
+```bash
+scp ai-revolver-<version>.tgz user@linux-host:/tmp/
+```
+
+На Linux:
+
+```bash
+npm install -g /tmp/ai-revolver-<version>.tgz
+airev --version
+which airev
+npm root -g
+```
+
+Если репозиторий уже есть на Linux и нужно собрать прямо там:
+
+```bash
+git pull --ff-only
+npm ci
+npm test
+npm run build
+npm pack
+npm install -g ./ai-revolver-<version>.tgz
+airev --version
+```
+
+### Rollback установки
+
+Вернуться на предыдущий tarball:
+
+```bash
+npm install -g /path/to/previous/ai-revolver-<old-version>.tgz
+airev --version
+```
+
+Полностью убрать глобальную установку:
+
+```bash
+npm uninstall -g ai-revolver
+```
