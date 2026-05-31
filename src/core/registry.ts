@@ -164,7 +164,9 @@ async function loadStale(): Promise<StaleData> {
     return { stale: [] };
   }
   const data = await readJsonFile<StaleData | { stale: Record<string, string> }>(p);
-  if (Array.isArray(data.stale)) return data;
+  if (Array.isArray(data.stale)) {
+    return data as StaleData;
+  }
   return { stale: Object.values(data.stale) };
 }
 

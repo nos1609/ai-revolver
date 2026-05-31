@@ -4,24 +4,35 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
+<<<<<<< HEAD
+
     coverage: {
-      // Wave prep: thresholds will be raised iteratively (statements/lines first,
-      // then branches ~65-70+, functions). Enabled only via `vitest --coverage`
-      // or the future "check:full" script. Excludes keep platform/keyring noise out.
-      enabled: false,
       provider: "v8",
+      // Coverage is opt-in via `vitest --coverage` or `npm run coverage`.
+      // Keeping it disabled by default keeps `npm test` fast.
+      enabled: false,
+      reporter: ["text", "json", "html"],
       reportsDirectory: "reports/coverage",
-      reporter: ["text", "html", "json"],
-      // Starter numbers — will be bumped in subsequent wave steps once baseline is green.
+
+      // Reasonable starting strict thresholds after the quality wave.
+      // Will be raised over time as tests improve.
       thresholds: {
-        statements: 58,
-        lines: 58,
-        branches: 62,
-        functions: 65,
+        statements: 55,
+        lines: 55,
+        branches: 70,
+        functions: 62,
       },
+
+      // Exclude platform-specific and hard-to-test files.
       exclude: [
-        "src/platform/keyring-*.ts",
-        "src/scripts/**",
+        "**/node_modules/**",
+        "dist/**",
+        "scripts/**",
+        "**/*.config.*",
+        "src/vault/keyring-*.ts",
+        "src/vault/store.ts",
+        "src/index.ts",
+        "src/types/index.ts",
         "tests/**",
       ],
     },

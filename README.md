@@ -93,13 +93,17 @@ airev completion fish | source
 ```bash
 npm install
 npm test
-npm run build      # tsup → dist/
+npm run build
+npm link                 # ← обязательно после билда
+airev --version          # должен показать версию из этого репозитория
 airev --help
 ```
 
+**Важно:** после `npm run build` (или любых изменений в `src/`) нужно заново выполнить `npm link`, иначе в PATH останется старая версия.
+
 ### Локальная dev-установка
 
-`npm link` удобен только для разработки на той же машине, где лежит workspace:
+`npm link` делает команду `airev` глобальной, но указывающей на текущий workspace:
 
 ```bash
 npm link
@@ -108,8 +112,9 @@ where.exe airev   # Windows
 airev --version
 ```
 
-Без `npm link` глобальный `airev` остаётся копией в global npm prefix и изменения
-в `src/` не подхватывает:
+Если раньше уже делали `npm link`, а потом пересобрали проект — **обязательно выполните `npm link` повторно**.
+
+Без `npm link` (или после установки через `npm install -g`) глобальный `airev` остаётся копией и не видит изменения в `src/`:
 
 - Windows: `%APPDATA%\npm\node_modules\ai-revolver`
 - Linux/macOS: смотри `npm root -g`
