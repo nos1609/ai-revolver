@@ -71,7 +71,7 @@ export async function vaultCommand(
   }
 }
 
-async function vaultPath(): Promise<void> {
+function vaultPath(): void {
   const paths = getVaultPaths();
   console.log();
   console.log(`${pathLabel("config:")} ${paths.configDir}`);

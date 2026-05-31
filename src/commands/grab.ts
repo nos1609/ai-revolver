@@ -6,7 +6,7 @@ import { readProviderJsonFile } from "../providers/json.js";
 import { addProfile, clearStale, getProfile, isActiveMain, setActive } from "../core/registry.js";
 import { openVault } from "../vault/factory.js";
 import { withProfileLock } from "../core/lock.js";
-import { satelliteCredentialPath, satelliteDir } from "../core/satellite.js";
+import { satelliteCredentialPath } from "../core/satellite.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 import { getByPath } from "../core/usage.js";
@@ -215,7 +215,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
 
   // API key path — нет lock (нет credential file на диске)
   const existing = await getProfile(profileName, providerName);
-  if (existing && existing.auth_type !== authType!) {
+  if (existing && existing.auth_type !== authType) {
     throw new Error(
       trf(
         `Профиль "{n}" существует с auth_type="{old}", но {src} подразумевает "{new}". ` +
@@ -225,18 +225,20 @@ export async function grab(providerName: string, profileName: string, opts: Grab
         {
           n: profileName,
           old: existing.auth_type,
-          new: authType!,
+          new: authType,
           src: "--api-key",
         },
       ),
     );
   }
 
-  const profile = existing ?? (await addProfile(profileName, providerName, authType!));
+  const profile = existing ?? (await addProfile(profileName, providerName, authType));
   const vault = await openVault({ skipVerify: true });
   await vault.put({
     profile_id: profile.id,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guaranteed by earlier branching in apiKey path
     credentials: credentials!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guaranteed by earlier branching in apiKey path
     grab_data: grabData!,
   });
   await clearStale(profile.id);

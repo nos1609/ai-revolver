@@ -13,7 +13,7 @@ import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 import { getByPath } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
-import type { ProviderDefinition, VaultEntry } from "../types/index.js";
+import type { ProviderDefinition } from "../types/index.js";
 
 // ── Public types ──────────────────────────────────────────────
 

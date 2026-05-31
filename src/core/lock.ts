@@ -60,12 +60,14 @@ export async function withProfileLock<T>(
           `another airev operation holds the lock for ${provider}/${name}` +
           (pid ? ` (pid ${pid})` : "") +
           `\n  if no such process is running, clear it with: airev vault unlock ${provider} ${name}`,
+          { cause: err },
         );
       }
 
       if (Date.now() > deadline) {
         throw new Error(
           `timed out waiting for lock ${provider}/${name} after ${timeoutMs}ms`,
+          { cause: err },
         );
       }
 

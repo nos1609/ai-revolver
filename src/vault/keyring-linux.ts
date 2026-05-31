@@ -1,9 +1,4 @@
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-const ATTR_SERVICE = "service=ai-revolver";
 
 /**
  * Linux secret store via `secret-tool` (libsecret).
@@ -13,24 +8,30 @@ const ATTR_SERVICE = "service=ai-revolver";
  * Data is stored as a secret with attributes — accessible only to current user session.
  */
 export async function secretToolStore(key: string, data: string): Promise<void> {
-  await execFileAsync("secret-tool", [
-    "store",
-    "--label", `ai-revolver: ${key}`,
-    "service", "ai-revolver",
-    "account", key,
-  ], {
-    timeout: 15000,
-    input: data, // secret-tool reads the secret from stdin — never exposed as arg
+  await new Promise<void>((resolve, reject) => {
+    const child = execFile(
+      "secret-tool",
+      ["store", "--label", `ai-revolver: ${key}`, "service", "ai-revolver", "account", key],
+      { timeout: 15000 },
+      (err) => (err ? reject(err) : resolve()),
+    );
+    child.stdin?.end(data, "utf8");
   });
 }
 
 export async function secretToolLoad(key: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("secret-tool", [
-      "lookup",
-      "service", "ai-revolver",
-      "account", key,
-    ], { timeout: 10000 });
+    const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      execFile(
+        "secret-tool",
+        ["lookup", "service", "ai-revolver", "account", key],
+        { timeout: 10000, encoding: "utf8" },
+        (err, stdout, stderr) => {
+          if (err) reject(err);
+          else resolve({ stdout: String(stdout), stderr: String(stderr) });
+        },
+      );
+    });
     return stdout.trimEnd() || null;
   } catch {
     return null;
@@ -38,11 +39,14 @@ export async function secretToolLoad(key: string): Promise<string | null> {
 }
 
 export async function secretToolDelete(key: string): Promise<void> {
-  await execFileAsync("secret-tool", [
-    "clear",
-    "service", "ai-revolver",
-    "account", key,
-  ], { timeout: 10000 }).catch(() => {});
+  await new Promise<void>((resolve) => {
+    execFile(
+      "secret-tool",
+      ["clear", "service", "ai-revolver", "account", key],
+      { timeout: 10000 },
+      () => resolve(),
+    );
+  });
 }
 
 export type SecretToolStatus =

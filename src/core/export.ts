@@ -7,7 +7,7 @@ import {
   clearStale,
 } from "./registry.js";
 import type { VaultStore } from "../vault/store.js";
-import type { Profile, VaultEntry } from "../types/index.js";
+import type { Profile } from "../types/index.js";
 import {
   encryptWithPassword,
   decryptWithPassword,

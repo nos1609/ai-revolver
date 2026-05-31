@@ -737,6 +737,133 @@ describe("additional usage limits mapping", () => {
     await expect(fetchUsage(provider, entry)).rejects.toThrow(/Unknown transform/);
   });
 
+  it("correctly handles partial additional limit objects without crashing", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { limit_name: "Partial Only" },
+          { rate_limit: { primary_window: { used_percent: 40 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    // Display-only entry is correctly dropped by hasMappedExtra; only the one with
+    // a mapped window survives. This is consistent with sibling tests.
+    expect(result.snapshot.extras).toEqual([
+      { primary: { used_percent: 40 } },
+    ]);
+  });
+
+  it("handles mixed valid and invalid additional entries without dropping valid ones", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { limit_name: "Valid", rate_limit: { primary_window: { used_percent: 12 } } },
+          "completely-invalid",
+          null,
+          { limit_name: "AlsoValid", rate_limit: { primary_window: { used_percent: 34 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    expect(result.snapshot.extras).toEqual([
+      { display: "Valid", primary: { used_percent: 12 } },
+      { display: "AlsoValid", primary: { used_percent: 34 } },
+    ]);
+  });
+
+  it("handles mixed valid and invalid additional entries without dropping valid ones", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { limit_name: "Valid", rate_limit: { primary_window: { used_percent: 12 } } },
+          "completely-invalid",
+          null,
+          { limit_name: "AlsoValid", rate_limit: { primary_window: { used_percent: 34 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    expect(result.snapshot.extras).toEqual([
+      { display: "Valid", primary: { used_percent: 12 } },
+      { display: "AlsoValid", primary: { used_percent: 34 } },
+    ]);
+  });
+
+  it("returns undefined extras when additional_rate_limits is present but has no usable entries", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { metered_feature: "only-opaque" },
+          { rate_limit: {} },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    expect(result.snapshot.extras).toBeUndefined();
+  });
+
+  it("preserves order of additional entries exactly as returned by provider", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        additional_rate_limits: [
+          { limit_name: "Third", rate_limit: { primary_window: { used_percent: 30 } } },
+          { limit_name: "First", rate_limit: { primary_window: { used_percent: 10 } } },
+          { limit_name: "Second", rate_limit: { primary_window: { used_percent: 20 } } },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    expect(result.snapshot.extras?.map(e => e.display)).toEqual(["Third", "First", "Second"]);
+  });
+
+  it("does not include extras when provider returns empty object for additional_rate_limits", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        rate_limit: { primary_window: { used_percent: 5 } },
+        additional_rate_limits: {},
+      }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    expect(result.snapshot.extras).toBeUndefined();
+  });
+
+  it("treats empty additional_rate_limits array as no extras", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ additional_rate_limits: [] }),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await fetchUsage(providerWithExtras(), entry);
+    expect(result.snapshot.extras).toBeUndefined();
+  });
+
   it("maps Codex provider additional_rate_limits from the bundled YAML", async () => {
     const codex = parseYaml(readFileSync("providers/codex.yaml", "utf8")) as ProviderDefinition;
     const fetch = vi.fn().mockResolvedValueOnce({
@@ -864,5 +991,52 @@ describe("usage probe error handling", () => {
       { probe: "https://example.test/profile", status: 429, transient: true },
       { probe: "https://example.test/usage", status: 529, transient: true },
     ]);
+  });
+});
+
+// ── applyMapExpr transforms (mutation targets) ───────────
+
+describe("applyMapExpr transforms", () => {
+  it("now_ms_plus_seconds: resolves path then adds relative seconds", () => {
+    const before = Date.now();
+    const v = applyMapExpr({ expires_in: 30 }, "expires_in | now_ms_plus_seconds");
+    const after = Date.now();
+    expect(typeof v).toBe("number");
+    const n = v as number;
+    expect(Number.isFinite(n)).toBe(true);
+    expect(n).toBeGreaterThanOrEqual(before + 30 * 1000 - 5);
+    expect(n).toBeLessThanOrEqual(after + 30 * 1000 + 50);
+  });
+
+  it("jwt_claim: extracts claim from nested JWT under path", () => {
+    const jwt =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+      "eyJlbWFpbCI6Im1lQGV4LmNvbSIsInN1YiI6IjEyMyJ9." +
+      "sig";
+    const response = { id_token: jwt };
+    expect(applyMapExpr(response, "id_token | jwt_claim:email")).toBe("me@ex.com");
+    expect(applyMapExpr(response, "id_token | jwt_claim:sub")).toBe("123");
+    expect(applyMapExpr(response, "id_token | jwt_claim:missing")).toBeUndefined();
+  });
+
+  it("epoch_seconds_to_ms and iso_to_ms work on resolved path values", () => {
+    expect(applyMapExpr({ t: 1700000000 }, "t | epoch_seconds_to_ms")).toBe(1700000000 * 1000);
+    const iso = applyMapExpr({ ts: "2024-01-01T00:00:00.000Z" }, "ts | iso_to_ms");
+    expect(typeof iso).toBe("number");
+    expect(Number.isFinite(iso as number)).toBe(true);
+  });
+});
+
+// ── extras edge (lightweight, relies on hasMappedExtra via render) ─
+
+describe("renderSnapshot extras basic filtering", () => {
+  it("omits extras without any mapped primary or secondary", () => {
+    const lines = renderSnapshot({
+      email: "x@y.z",
+      extras: [{ display: "No windows here" }],
+    }).map(stripAnsi);
+    // Only the email line should remain; the no-window extra is filtered in render.
+    expect(lines.length).toBe(1);
+    expect(lines[0]).toContain("x@y.z");
   });
 });

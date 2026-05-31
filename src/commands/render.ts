@@ -9,7 +9,7 @@ import { withProfileLock } from "../core/lock.js";
 import { satelliteCredentialPath, satelliteDir } from "../core/satellite.js";
 import { fileExists } from "../platform/fs.js";
 import { resolveTemplatePath } from "../platform/index.js";
-import { tr, trf } from "../i18n.js";
+import { trf } from "../i18n.js";
 
 export interface RenderOpts {
   force?: boolean;

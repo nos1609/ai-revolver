@@ -70,7 +70,7 @@ export async function readCredentials(
       password = await getKeytarPassword(secret.service, account);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      throw new Error(`System credential store unavailable for backend=keytar service=${secret.service}: ${detail}`);
+      throw new Error(`System credential store unavailable for backend=keytar service=${secret.service}: ${detail}`, { cause: err });
     }
 
     if (!password) {

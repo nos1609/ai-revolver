@@ -16,9 +16,10 @@ export function getHome(): string {
 
 /** Resolve ${HOME} and env vars in provider YAML paths */
 export function resolveTemplatePath(template: string): string {
-  return template.replace(/\$\{(\w+)\}/g, (_, name) => {
+  return template.replace(/\$\{(\w+)\}/g, (_, name: string) => {
     if (name === "HOME") return getHome();
-    return process.env[name] ?? "";
+    const envValue: string | undefined = (process.env as Record<string, string | undefined>)[name];
+    return envValue ?? "";  // safe access after explicit cast
   });
 }
 

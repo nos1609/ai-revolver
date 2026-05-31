@@ -68,8 +68,9 @@ export function tr(ru: string, en: string): string {
  */
 export function trf(ru: string, en: string, vars: Record<string, string | number>): string {
   const s = tr(ru, en);
-  return s.replace(/\{(\w+)\}/g, (_, k) => {
-    const v = vars[k];
+  return s.replace(/\{(\w+)\}/g, (_, k: string) => {
+    const hasKey = Object.prototype.hasOwnProperty.call(vars, k);
+    const v = hasKey ? vars[k] : undefined;
     return v === undefined ? `{${k}}` : String(v);
   });
 }

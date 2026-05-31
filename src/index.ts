@@ -274,7 +274,8 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(chalk.red(trf(`Ошибка: {msg}`, `Error: {msg}`, { msg: err.message })));
+main().catch((err: unknown) => {
+  const msg = err instanceof Error ? err.message : String(err ?? "unknown error");
+  console.error(chalk.red(trf(`Ошибка: {msg}`, `Error: {msg}`, { msg })));
   process.exit(ExitCode.GENERAL_ERROR);
 });

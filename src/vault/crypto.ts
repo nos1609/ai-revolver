@@ -61,5 +61,5 @@ export function decryptWithPassword(env: EncryptedEnvelope, password: string): s
 
   const decipher = crypto.createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
   decipher.setAuthTag(tag);
-  return decipher.update(encrypted) + decipher.final("utf-8");
+  return decipher.update(encrypted).toString() + decipher.final("utf-8");
 }
