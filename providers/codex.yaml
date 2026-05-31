@@ -97,3 +97,9 @@ usage:
         secondary.used_percent:    "rate_limit.secondary_window.used_percent"
         secondary.resets_at:       "rate_limit.secondary_window.reset_at | epoch_seconds_to_ms"
         secondary.window_seconds:  "rate_limit.secondary_window.limit_window_seconds"
+
+identity:
+  fields:
+    - "tokens.account_id"
+  display:
+    - "${tokens.account_id}"

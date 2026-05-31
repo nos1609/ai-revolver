@@ -64,8 +64,8 @@ function decodeJwtPayload(jwt: unknown): Record<string, unknown> | undefined {
   if (parts.length < 2) return undefined;
   try {
     const json = Buffer.from(parts[1], "base64url").toString("utf8");
-    const payload = JSON.parse(json);
-    return typeof payload === "object" && payload !== null ? payload : undefined;
+    const payload = JSON.parse(json) as unknown;
+    return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
   } catch {
     return undefined;
   }
@@ -106,7 +106,8 @@ export function applyMapExpr(response: unknown, expr: string): unknown {
       // Requires `:<claim>` arg, e.g. `id_token | jwt_claim:email`.
       if (!arg) throw new Error(`jwt_claim requires a claim name (e.g. "jwt_claim:email")`);
       const payload = decodeJwtPayload(value);
-      return payload?.[arg];
+      const claim = arg as keyof typeof payload;
+      return payload ? payload[claim] : undefined;
     }
     default:
       throw new Error(`Unknown transform: "${transform}"`);
@@ -171,7 +172,7 @@ async function refreshTokens(
     return { ok: false, status: res.status, error: err };
   }
 
-  const json = (await res.json()) as unknown;
+  const json: unknown = await res.json();
 
   // Start with a copy of existing creds so we preserve anything the refresh
   // response doesn't return (Codex refresh doesn't return expires_in, etc.)
@@ -192,6 +193,11 @@ interface ProbeOutcome {
 
 function isTransientProbeStatus(status: number): boolean {
   return status === 429 || status === 529 || status === 503;
+}
+
+/** Narrow unknown to a safe object for getByPath usage inside probe functions. */
+function safeJson(json: unknown): Record<string, unknown> {
+  return isNonNullObject(json) ? json : {};
 }
 
 async function runProbe(
@@ -233,19 +239,22 @@ interface CopilotBucket {
 }
 
 function getCopilotResetMs(json: unknown): number | undefined {
+  const obj = safeJson(json);
   return (
-    parseEpochMs(getByPath(json, "quota_reset_date_utc")) ??
-    parseEpochMs(getByPath(json, "quota_reset_date")) ??
-    parseEpochMs(getByPath(json, "limited_user_reset_date"))
+    parseEpochMs(getByPath(obj, "quota_reset_date_utc")) ??
+    parseEpochMs(getByPath(obj, "quota_reset_date")) ??
+    parseEpochMs(getByPath(obj, "limited_user_reset_date"))
   );
 }
 
 function copilotBucketFromQuotaSnapshot(json: unknown, name: string): CopilotBucket | undefined {
+  const obj = safeJson(json);
   const prefix = `quota_snapshots.${name}`;
-  const quota = finiteNumber(getByPath(json, `${prefix}.entitlement`));
-  const remaining = finiteNumber(getByPath(json, `${prefix}.remaining`));
-  const percentRemaining = finiteNumber(getByPath(json, `${prefix}.percent_remaining`));
-  const unlimited = getByPath(json, `${prefix}.unlimited`) === true || quota === -1;
+  const quota = finiteNumber(getByPath(obj, `${prefix}.entitlement`));
+  const remaining = finiteNumber(getByPath(obj, `${prefix}.remaining`));
+  const percentRemaining = finiteNumber(getByPath(obj, `${prefix}.percent_remaining`));
+  const unlimitedRaw = getByPath(obj, `${prefix}.unlimited`);
+  const unlimited = unlimitedRaw === true || quota === -1;
   if (unlimited || !quota || quota <= 0) return undefined;
 
   if (remaining !== undefined) {
@@ -258,21 +267,23 @@ function copilotBucketFromQuotaSnapshot(json: unknown, name: string): CopilotBuc
 }
 
 function copilotBucketFromMonthlyQuota(json: unknown, name: "chat" | "completions"): CopilotBucket | undefined {
-  const quota = finiteNumber(getByPath(json, `monthly_quotas.${name}`));
-  const remaining = finiteNumber(getByPath(json, `limited_user_quotas.${name}`));
+  const obj = safeJson(json);
+  const quota = finiteNumber(getByPath(obj, `monthly_quotas.${name}`));
+  const remaining = finiteNumber(getByPath(obj, `limited_user_quotas.${name}`));
   if (!quota || quota <= 0 || remaining === undefined) return undefined;
   return { name, used_percent: Math.max(0, Math.min(100, ((quota - remaining) / quota) * 100)) };
 }
 
 function applyCopilotInternalUserParser(snapshot: UsageSnapshot, json: unknown): void {
   const resetMs = getCopilotResetMs(json);
+  const obj = isNonNullObject(json) ? json : {};
   const buckets = [
-    copilotBucketFromMonthlyQuota(json, "chat"),
-    copilotBucketFromMonthlyQuota(json, "completions"),
-    copilotBucketFromQuotaSnapshot(json, "chat"),
-    copilotBucketFromQuotaSnapshot(json, "completions"),
-    copilotBucketFromQuotaSnapshot(json, "premium_interactions"),
-    copilotBucketFromQuotaSnapshot(json, "premium_models"),
+    copilotBucketFromMonthlyQuota(obj, "chat"),
+    copilotBucketFromMonthlyQuota(obj, "completions"),
+    copilotBucketFromQuotaSnapshot(obj, "chat"),
+    copilotBucketFromQuotaSnapshot(obj, "completions"),
+    copilotBucketFromQuotaSnapshot(obj, "premium_interactions"),
+    copilotBucketFromQuotaSnapshot(obj, "premium_models"),
   ].filter((bucket): bucket is CopilotBucket => bucket !== undefined);
 
   const byName = new Map<string, CopilotBucket>();
@@ -309,6 +320,14 @@ function hasMappedExtra(entry: AdditionalLimitEntry): boolean {
   return entry.primary !== undefined || entry.secondary !== undefined;
 }
 
+function isNonNullObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
 function applyProbeExtras(
   snapshot: UsageSnapshot,
   probe: ProviderUsageProbe,
@@ -322,11 +341,14 @@ function applyProbeExtras(
 
   const mapped: AdditionalLimitEntry[] = [];
   for (const sourceEntry of entries) {
+    if (!isNonNullObject(sourceEntry)) continue;
     const extra: AdditionalLimitEntry = {};
     for (const [field, expr] of Object.entries(probe.extras_map)) {
       const value = applyMapExpr(sourceEntry, expr);
       if (value === undefined) continue;
-      setByPath(extra as unknown as Record<string, unknown>, field, value);
+      // Use setByPath so dotted keys in extras_map ("primary.used_percent") become
+      // nested objects, matching what hasMappedExtra and renderSnapshot expect.
+      setByPath(asRecord(extra), field, value);
     }
     if (hasMappedExtra(extra)) mapped.push(extra);
   }
@@ -348,7 +370,8 @@ function applyProbeMap(
   for (const [field, expr] of Object.entries(probe.map)) {
     const value = applyMapExpr(json, expr);
     if (value === undefined) continue;
-    setByPath(snapshot as unknown as Record<string, unknown>, field, value);
+    // Safe: we control the shape of UsageSnapshot
+    setByPath(asRecord(snapshot), field, value);
   }
 
   applyProbeExtras(snapshot, probe, json);
@@ -492,7 +515,9 @@ export async function fetchUsage(
     for (const [field, expr] of Object.entries(provider.usage.static)) {
       const v = applyMapExpr(credentials, expr);
       if (v !== undefined) {
-        setByPath(snapshot as unknown as Record<string, unknown>, field, v);
+        // Controlled shape: UsageSnapshot is built by us; setByPath only needs
+        // a writable Record for the path DSL. Single cast keeps it B-safe.
+        setByPath(snapshot as Record<string, unknown>, field, v);
       }
     }
   }

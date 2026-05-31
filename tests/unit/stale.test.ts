@@ -64,3 +64,27 @@ describe("dead refresh detection", () => {
     expect(isDeadRefreshError(400, "invalid_request")).toBe(false);
   });
 });
+
+describe("stale legacy format migration", () => {
+  it("loads legacy Record<string,string> stale format and converts to array", async () => {
+    const staleFile = path.join(configState.configDir, "stale.json");
+    await fs.mkdir(configState.configDir, { recursive: true });
+    await fs.writeFile(
+      staleFile,
+      JSON.stringify({
+        stale: {
+          old_one: "old_one",
+          old_two: "old_two",
+        },
+      }),
+    );
+
+    expect(await isStale("old_one")).toBe(true);
+    expect(await isStale("old_two")).toBe(true);
+    expect(await isStale("nonexistent")).toBe(false);
+
+    const all = await getAllStale();
+    expect(all).toContain("old_one");
+    expect(all).toContain("old_two");
+  });
+});

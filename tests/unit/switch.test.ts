@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// withProfileLock passes through to fn() — lock behaviour tested in lock.test.ts
+vi.mock("../../src/core/lock.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/lock.js")>();
+  return { ...actual, withProfileLock: vi.fn(async (_p: string, _n: string, fn: () => Promise<unknown>) => fn()) };
+});
+
 // Hoisted mocks for registry (the main thing we care about for the stale guard)
 const registryMocks = vi.hoisted(() => ({
   getProfile: vi.fn(),
+  getProfileById: vi.fn(),
+  getActive: vi.fn(),
   isStale: vi.fn(),
   clearStale: vi.fn(),
   setActive: vi.fn(),
@@ -13,11 +21,18 @@ vi.mock("../../src/core/registry.js", async () => {
   return {
     ...actual,
     getProfile: registryMocks.getProfile,
+    getProfileById: registryMocks.getProfileById,
+    getActive: registryMocks.getActive,
     isStale: registryMocks.isStale,
     clearStale: registryMocks.clearStale,
     setActive: registryMocks.setActive,
   };
 });
+
+// sync is a no-op in this test file (auto-sync behaviour tested in switch-autosync.test.ts)
+vi.mock("../../src/commands/sync.js", () => ({
+  sync: vi.fn(async () => ({ resolution: "no-op" })),
+}));
 
 // Mock heavy dependencies so we can focus on the early guard logic
 vi.mock("../../src/providers/loader.js", () => ({
@@ -49,6 +64,9 @@ describe("switchProfile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "log").mockImplementation(() => {});
+    // No active main by default so auto-sync doesn't run in these guard tests
+    registryMocks.getActive.mockResolvedValue(null);
+    registryMocks.getProfileById.mockResolvedValue(null);
   });
 
   it("throws when profile does not exist", async () => {

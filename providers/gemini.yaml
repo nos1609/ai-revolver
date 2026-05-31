@@ -75,3 +75,14 @@ detection:
 
 # No `usage:` section — Gemini Code Assist rate limits are not exposed via a
 # public REST endpoint we can probe without extra auth (quota lives in GCP).
+
+identity:
+  # Google's oauth_creds.json does not expose a stable user sub outside the
+  # id_token JWT. 'scope' is the best available stable per-user signal in V1;
+  # full sub-claim extraction requires JWT decode (V2).
+  # WARNING: scope is not user-unique — two different Google accounts can share
+  # the same scope value. The guard may not detect cross-account drift for Gemini.
+  fields:
+    - "scope"
+  display:
+    - "${scope}"

@@ -1,5 +1,6 @@
 import chalk from "chalk";
 
+// eslint-disable-next-line no-control-regex -- ANSI escape sequence detection for terminal width calculation
 const ANSI_RE = /\x1B\[[0-?]*[ -/]*[@-~]/g;
 const DEFAULT_TERMINAL_WIDTH = 100;
 const MAX_TABLE_WIDTH = 120;

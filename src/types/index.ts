@@ -81,6 +81,15 @@ export interface ProviderApiKeyMethod {
   env_extra?: Record<string, string>;
 }
 
+export interface ProviderIdentity {
+  /** Credential paths (dotted) whose values define logical identity.
+   *  e.g. ["tokens.account_id"] */
+  fields: string[];
+  /** Human-readable expressions for identity-mismatch error messages.
+   *  May reference `${grab_fields.x}`, `${credentials.x}`, `${tokens.x}`. */
+  display: string[];
+}
+
 export interface ProviderDefinition {
   name: string;
   version: number;
@@ -93,6 +102,8 @@ export interface ProviderDefinition {
     paths: string[];
   };
   usage?: ProviderUsage;
+  /** Optional stable-identity schema for satellite sync. */
+  identity?: ProviderIdentity;
 }
 
 // ── Usage probe schema ───────────────────────────────────
@@ -189,6 +200,11 @@ export interface VaultEntry {
   profile_id: string;
   credentials: Record<string, unknown>;
   grab_data: Record<string, unknown>;
+  /** Stable identity field values captured at write time, keyed by dotted field path.
+   *  Absent on legacy entries written before identity support was added. */
+  identity?: Record<string, unknown>;
+  /** Epoch ms of the most recent credential refresh known to the vault for this entry. */
+  last_refresh?: number;
 }
 
 export interface VaultData {

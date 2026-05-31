@@ -48,3 +48,9 @@ usage:
         Accept: "application/json"
         User-Agent: "ai-revolver"
       map: {}
+
+identity:
+  fields:
+    - "lastLoggedInUser.login"
+  display:
+    - "${lastLoggedInUser.login}"

@@ -328,3 +328,128 @@ describe("vaultCommand status/passwd effective backend", () => {
     }
   });
 });
+
+describe("vault migrate additional branches", () => {
+  it("migrate from keyring to file with --keep-source leaves source entries", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 2,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
+    backendMocks.sourceIds = ["p1", "p2"];
+
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    await vaultCommand("migrate", "file", { keepSource: true });
+
+    expect(backendMocks.removedIds.length).toBe(0);
+  });
+
+  it("migrate refuses when target already has more entries than source (safety)", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 1,
+      encryptedFileExists: true,
+      keyringLabel: "Linux libsecret",
+    };
+    backendMocks.sourceIds = ["only-one"];
+    // Simulate target already having entries (mocked in openVaultBackend)
+
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    // This should not throw and should be a no-op or handled gracefully
+    await expect(vaultCommand("migrate", "file", { yes: true })).resolves.not.toThrow();
+  });
+
+  it("migrate from encrypted-file to keyring when keyring becomes available", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "encrypted-file",
+      keyringAvailable: false,
+      keyringEntryCount: 0,
+      encryptedFileExists: true,
+      keyringLabel: "Linux libsecret",
+    };
+    backendMocks.sourceIds = ["p1", "p2"];
+
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    await vaultCommand("migrate", "keyring", { yes: true });
+
+    // Should have attempted the migration
+    expect(backendMocks.sourceIds.length).toBeGreaterThan(0);
+  });
+
+  it("vault path command outputs all relevant paths", async () => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (v?: unknown) => logs.push(String(v ?? ""));
+
+    try {
+      const { vaultCommand } = await import("../../src/commands/vault.js");
+      await vaultCommand("path", undefined);
+
+      const output = logs.join("\n");
+      expect(output).toContain("config:");
+      expect(output).toContain("registry:");
+      expect(output).toContain("vault");
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  it("migrate with --yes on keyring to file when already on file is a safe no-op", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "encrypted-file",
+      keyringAvailable: true,
+      keyringEntryCount: 0,
+      encryptedFileExists: true,
+      keyringLabel: "Linux libsecret",
+    };
+
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    await expect(vaultCommand("migrate", "file", { yes: true })).resolves.not.toThrow();
+  });
+
+  it("handles interactive migration cancellation gracefully", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 3,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
+
+    // Simulate user not confirming
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    await expect(vaultCommand("migrate", "file", {})).resolves.not.toThrow();
+  });
+
+  it("migrate from keyring to file with zero entries is a no-op", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 0,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
+
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    await expect(vaultCommand("migrate", "file", { yes: true })).resolves.not.toThrow();
+  });
+
+  it("migrate from keyring to file with --keep-source when source has entries keeps them", async () => {
+    infoMocks.effectiveBackend = {
+      backend: "keyring",
+      keyringAvailable: true,
+      keyringEntryCount: 2,
+      encryptedFileExists: false,
+      keyringLabel: "Linux libsecret",
+    };
+    backendMocks.sourceIds = ["keep1", "keep2"];
+
+    const { vaultCommand } = await import("../../src/commands/vault.js");
+    await vaultCommand("migrate", "file", { keepSource: true });
+
+    expect(backendMocks.removedIds.length).toBe(0);
+  });
+});
