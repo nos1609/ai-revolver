@@ -222,3 +222,35 @@ describe("grab — identity capture", () => {
     expect(putCall.last_refresh).toBe(1_700_000_001_000);
   });
 });
+
+describe("grab — no-op / --force semantics", () => {
+  it("no-op когда vault entry уже существует (без --force)", async () => {
+    const { grab } = await import("../../src/commands/grab.js");
+    registryMocks.isActiveMain.mockResolvedValue(true);
+    // vault уже содержит entry для этого профиля
+    vaultMocks.get.mockResolvedValue({
+      profile_id: "prof_side1",
+      credentials: { access_token: "tok_old" },
+      grab_data: {},
+    });
+
+    await grab("codex", "side1", {});
+
+    // vault.put НЕ должен быть вызван
+    expect(vaultMocks.put).not.toHaveBeenCalled();
+  });
+
+  it("--force перезаписывает vault даже при существующем entry", async () => {
+    const { grab } = await import("../../src/commands/grab.js");
+    registryMocks.isActiveMain.mockResolvedValue(true);
+    vaultMocks.get.mockResolvedValue({
+      profile_id: "prof_side1",
+      credentials: { access_token: "tok_old" },
+      grab_data: {},
+    });
+
+    await grab("codex", "side1", { force: true });
+
+    expect(vaultMocks.put).toHaveBeenCalled();
+  });
+});

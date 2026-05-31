@@ -176,6 +176,23 @@ export async function grab(providerName: string, profileName: string, opts: Grab
       const profile = existing ?? (await addProfile(profileName, providerName, authType));
 
       const vault = await openVault({ skipVerify: true });
+
+      // No-op if vault already has an entry and --force was not passed.
+      // Use `sync` to refresh an existing vault entry from FS; `grab` is for initial capture.
+      const existingVaultEntry = await vault.get(profile.id);
+      if (existingVaultEntry && !opts.force) {
+        console.log(
+          chalk.dim(
+            trf(
+              `  "{n}" уже есть в vault — для обновления используй: airev {p} sync {n}`,
+              `  "{n}" already in vault — to refresh use: airev {p} sync {n}`,
+              { n: profileName, p: providerName },
+            ),
+          ),
+        );
+        return;
+      }
+
       await vault.put({
         profile_id: profile.id,
         credentials,
@@ -186,7 +203,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
       await clearStale(profile.id);
 
       if (existing) {
-        console.log(chalk.green(trf(`  ✓ "{n}" обновлён из CLI-файла`, `  ✓ Updated "{n}" from CLI file`, { n: profileName })));
+        console.log(chalk.green(trf(`  ✓ "{n}" перезаписан (--force)`, `  ✓ "{n}" overwritten (--force)`, { n: profileName })));
       } else {
         // Новый профиль забирается из native → он IS active
         await setActive(providerName, profile.id);

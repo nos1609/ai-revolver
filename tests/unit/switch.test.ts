@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// withProfileLock passes through to fn() — lock behaviour tested in lock.test.ts
+vi.mock("../../src/core/lock.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/core/lock.js")>();
+  return { ...actual, withProfileLock: vi.fn(async (_p: string, _n: string, fn: () => Promise<unknown>) => fn()) };
+});
+
 // Hoisted mocks for registry (the main thing we care about for the stale guard)
 const registryMocks = vi.hoisted(() => ({
   getProfile: vi.fn(),
