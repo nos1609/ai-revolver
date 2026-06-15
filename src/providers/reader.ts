@@ -3,6 +3,7 @@ import { resolveTemplatePath } from "../platform/index.js";
 import { pathSegments } from "../core/path.js";
 import { getKeytarPassword } from "./keytar.js";
 import { readProviderJsonFile } from "./json.js";
+import { sanitizeCredentials } from "../core/credential-policy.js";
 
 /** Get a nested value by path: "tokens.access_token" or "['github.com'].oauth_token". */
 function getByPath(obj: Record<string, unknown>, dotPath: string): unknown {
@@ -82,5 +83,8 @@ export async function readCredentials(
     }
   }
 
-  return { credentials, grab_data };
+  // Apply universal sanitize (treat empty sensitive tokens as absent) after full extraction
+  // (mapping + keytar). This is the first defense against poison from CLI refresh failures.
+  const sanitizedCredentials = sanitizeCredentials(credentials);
+  return { credentials: sanitizedCredentials, grab_data };
 }

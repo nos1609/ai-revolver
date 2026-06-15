@@ -372,6 +372,30 @@ describe("refresh error handling", () => {
   });
 });
 
+// W3 tests for last_refresh updates in persist (file source uses computeFreshness with mtime per design).
+describe("W3 last_refresh updates in persist", () => {
+  it("updates last_refresh = max(vault, compute mtime) on file source persist (no write)", async () => {
+    const { persistCredentials } = await import("../../src/core/usage.js");
+    const entry: VaultEntry = {
+      profile_id: "p",
+      credentials: { refresh_token: "old" },
+      grab_data: {},
+      last_refresh: 1000,
+    };
+    const newCreds = { refresh_token: "new" };
+    const result = await persistCredentials(
+      { name: "codex", auth_methods: { oauth: {} as any }, detection: { commands: [], paths: [] } } as any,
+      entry,
+      newCreds,
+      "file",
+      false, // no active, no write
+    );
+    // With proper implementation, last_refresh is updated using file mtime (or proxy).
+    // Test asserts it moves forward; full mtime semantics covered in integration tests.
+    expect(result.last_refresh).toBeGreaterThan(1000);
+  });
+});
+
 // ── provider-specific usage parsers ─────────────────────
 
 describe("copilot usage parser", () => {

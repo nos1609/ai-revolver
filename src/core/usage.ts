@@ -11,6 +11,9 @@ import { readCredentials } from "../providers/reader.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 import { pathSegments } from "./path.js";
+import { stat } from "node:fs/promises";
+import { readProviderJsonFile } from "../providers/json.js";
+import { computeFreshness } from "./credential-policy.js";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -595,20 +598,45 @@ export async function persistCredentials(
 ): Promise<VaultEntry> {
   if (source === "vault") return entry; // defensive — caller shouldn't call us
 
-  if (source === "refresh" && isActive) {
+  let lastRefresh = entry.last_refresh;
+
+  if (source === "refresh") {
+    lastRefresh = Date.now();
+    if (isActive) {
+      const oauth = provider.auth_methods.oauth;
+      if (!oauth) throw new Error(`Provider has no oauth method`);
+      await writeCredentials(
+        oauth.credential_file,
+        {
+          credentials: newCredentials,
+          grab_data: entry.grab_data,
+        },
+        oauth.credential_secrets,
+      );
+    }
+  } else if (source === "file") {
+    // Align with design: use file mtime (and any last_refresh in raw JSON) for freshness.
+    // This ensures mtime-only providers (Claude-like) get correct relative freshness from the live file read.
+    let fileTs = Date.now();
     const oauth = provider.auth_methods.oauth;
-    if (!oauth) throw new Error(`Provider has no oauth method`);
-    await writeCredentials(
-      oauth.credential_file,
-      {
-        credentials: newCredentials,
-        grab_data: entry.grab_data,
-      },
-      oauth.credential_secrets,
-    );
+    if (oauth) {
+      try {
+        const filePath = resolveTemplatePath(oauth.credential_file.path);
+        const fsStat = await stat(filePath);
+        const raw = await readProviderJsonFile<Record<string, unknown>>(filePath, oauth.credential_file.format);
+        fileTs = computeFreshness({
+          grabData: {},
+          rawJson: raw,
+          fileMtimeMs: fsStat.mtimeMs,
+        });
+      } catch {
+        // fallback to observation time
+      }
+    }
+    lastRefresh = Math.max(entry.last_refresh ?? 0, fileTs);
   }
 
-  return { ...entry, credentials: newCredentials };
+  return { ...entry, credentials: newCredentials, last_refresh: lastRefresh };
 }
 
 /** @deprecated Use `persistCredentials` with explicit `source`. Kept for back-compat. */

@@ -79,6 +79,16 @@ vi.mock("../../src/platform/fs.js", async (importOriginal) => {
   return { ...actual, fileExists: fsMocks.fileExists };
 });
 
+// ── node:fs/promises stat mock (for mtime freshness in W2 tests; real stat would require real files on fake paths)
+const fsPromisesMocks = vi.hoisted(() => ({ stat: vi.fn() }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    stat: fsPromisesMocks.stat,
+  };
+});
+
 vi.spyOn(console, "log").mockImplementation(() => {});
 
 let tempRoot: string;
@@ -128,6 +138,8 @@ beforeEach(async () => {
   fsMocks.fileExists.mockResolvedValue(true);
   writerMocks.writeCredentials.mockResolvedValue(undefined);
   vaultMocks.put.mockResolvedValue(undefined);
+  // default mtime for all tests (old tests rely on explicit last_refresh in fixtures, compute takes max; new mtime-only tests override)
+  fsPromisesMocks.stat.mockResolvedValue({ mtimeMs: TS_BASE } as any);
 });
 
 afterEach(async () => {
@@ -199,5 +211,53 @@ describe("sync freshness merge", () => {
     const result = await sync("codex", "side1", { force: true, direction: "pull" });
     expect(result.resolution).toBe("push-vault-to-fs");
     expect(writerMocks.writeCredentials).toHaveBeenCalled();
+  });
+
+  it("push-fs-to-vault с mtime когда нет last_refresh в grab_data/raw (Claude-like, mtime как сигнал свежести)", async () => {
+    const { sync } = await import("../../src/commands/sync.js");
+    const MTIME = 1_700_000_005_000;
+    fsPromisesMocks.stat.mockResolvedValue({ mtimeMs: MTIME } as any);
+
+    // нет last_refresh ни в grab_data, ни в raw — типичный Claude/Gemini
+    vaultMocks.get.mockResolvedValue(makeVaultEntry(TS_BASE));
+    readerMocks.readCredentials.mockResolvedValue({
+      credentials: { access_token: "tok_a", account_id: "acc_A" },
+      grab_data: {},
+    });
+    jsonMocks.readProviderJsonFile.mockResolvedValue({
+      tokens: { access_token: "tok_a", account_id: "acc_A" },
+    });
+
+    const result = await sync("codex", "side1");
+    expect(result.resolution).toBe("push-fs-to-vault");
+    const putCall = vaultMocks.put.mock.calls[0][0];
+    expect(putCall.last_refresh).toBe(MTIME);
+  });
+
+  it("push-fs-to-vault с merge: пустой refresh в FS не затирает хороший в vault (poison guard)", async () => {
+    const { sync } = await import("../../src/commands/sync.js");
+    const MTIME = 1_700_000_004_000;
+    fsPromisesMocks.stat.mockResolvedValue({ mtimeMs: MTIME } as any);
+
+    vaultMocks.get.mockResolvedValue({
+      profile_id: "prof_side1",
+      credentials: { access_token: "tok_a", refresh_token: "rt_vault_good", account_id: "acc_A" },
+      grab_data: { last_refresh: TS_BASE },
+      identity: { "tokens.account_id": "acc_A" },
+      last_refresh: TS_BASE,
+    });
+    readerMocks.readCredentials.mockResolvedValue({
+      credentials: { access_token: "tok_a", refresh_token: "" },
+      grab_data: {},
+    });
+    jsonMocks.readProviderJsonFile.mockResolvedValue({
+      tokens: { access_token: "tok_a", account_id: "acc_A" },
+    });
+
+    await sync("codex", "side1", { force: true, direction: "push" });
+
+    const putCall = vaultMocks.put.mock.calls[0][0];
+    expect(putCall.credentials.refresh_token).toBe("rt_vault_good"); // merge guard сработал
+    expect(putCall.last_refresh).toBe(MTIME);
   });
 });

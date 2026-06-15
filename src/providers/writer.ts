@@ -4,6 +4,7 @@ import { writeJsonFile, fileExists } from "../platform/fs.js";
 import { pathSegments } from "../core/path.js";
 import { setKeytarPassword } from "./keytar.js";
 import { readProviderJsonFile } from "./json.js";
+import { sanitizeCredentials, mergeCredentials } from "../core/credential-policy.js";
 
 /** Set a nested value by path, creating intermediate objects. */
 function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
@@ -17,6 +18,16 @@ function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown
     current = current[key] as Record<string, unknown>;
   }
   current[keys[keys.length - 1]] = value;
+}
+
+/** Get a nested value by path (mirrors reader + usage; needed for existingCreds extraction). */
+function getByPath(obj: Record<string, unknown>, dotPath: string): unknown {
+  let current: unknown = obj;
+  for (const key of pathSegments(dotPath)) {
+    if (current == null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
 }
 
 function interpolateSecretTemplate(
@@ -51,14 +62,26 @@ export async function writeCredentials(
     existing = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
   }
 
-  // Write mapping fields (normalised key → original json path)
+  // Extract existing mapped credentials (from the file we just read for preserve_unknown).
+  // Then merge with sanitized incoming: sensitive empty values never clobber a live
+  // existing value. This is the second defense (writer merge guard) against vault→FS
+  // poison and FS→vault empty clobber on grab/sync/switch/usage.
+  const existingCreds: Record<string, unknown> = {};
   for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
-    if (normKey in data.credentials) {
-      setByPath(existing, jsonPath, data.credentials[normKey]);
+    const v = getByPath(existing, jsonPath);
+    if (v !== undefined) existingCreds[normKey] = v;
+  }
+  const mergedCreds = mergeCredentials(existingCreds, sanitizeCredentials(data.credentials));
+
+  // Write mapping fields from the *merged* set (not raw incoming).
+  for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
+    if (normKey in mergedCreds) {
+      setByPath(existing, jsonPath, mergedCreds[normKey]);
     }
   }
 
   // Write only credential-file grab_fields (extra_files use writeExtraFiles).
+  // grab_fields are pass-through and not subject to the sensitive merge guard in v1.
   for (const fieldPath of credFile.grab_fields) {
     if (fieldPath in data.grab_data) {
       setByPath(existing, fieldPath, data.grab_data[fieldPath]);

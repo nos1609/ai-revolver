@@ -1,4 +1,5 @@
 import path from "node:path";
+import { stat } from "node:fs/promises";
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
 import { readExtraFiles } from "../providers/extra-files.js";
@@ -13,6 +14,7 @@ import { fileExists } from "../platform/fs.js";
 import { getByPath } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
 import type { AuthType, ProviderDefinition } from "../types/index.js";
+import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
 
 export interface GrabOptions {
   apiKey?: string;
@@ -90,22 +92,7 @@ function extractIdentity(
   return out;
 }
 
-function extractLastRefresh(
-  grabData: Record<string, unknown>,
-  rawJson: Record<string, unknown>,
-): number | undefined {
-  // Сначала из grab_data (provider явно объявил last_refresh как grab_field)
-  const fromGrab = grabData["last_refresh"];
-  if (typeof fromGrab === "number" && Number.isFinite(fromGrab)) return fromGrab;
-  if (typeof fromGrab === "string") {
-    const d = Date.parse(fromGrab);
-    if (Number.isFinite(d)) return d;
-  }
-  // Fallback: из сырого JSON
-  const fromRaw = rawJson["last_refresh"];
-  if (typeof fromRaw === "number" && Number.isFinite(fromRaw)) return fromRaw;
-  return undefined;
-}
+// (old extractLastRefresh removed — unified via credential-policy.computeFreshness + mtime stat)
 
 // ── Main function ─────────────────────────────────────────
 
@@ -198,12 +185,32 @@ export async function grab(providerName: string, profileName: string, opts: Grab
         return;
       }
 
+      // FS mtime + computeFreshness (supports providers without last_refresh in their files)
+      let fsMtime = 0;
+      try {
+        const fsStat = await stat(credPath);
+        fsMtime = fsStat.mtimeMs;
+      } catch {
+        // fallback 0 (oldest) — prod paths are guarded by fileExists; unit tests with fake paths stay back-compat
+      }
+      const lastRefresh = computeFreshness({
+        grabData,
+        rawJson,
+        fileMtimeMs: fsMtime,
+      });
+
+      // Merge guard even on --force grab: empty refresh from FS never clobbers live vault copy.
+      let finalCredentials = credentials;
+      if (existingVaultEntry) {
+        finalCredentials = mergeCredentials(existingVaultEntry.credentials, credentials);
+      }
+
       await vault.put({
         profile_id: profile.id,
-        credentials,
+        credentials: finalCredentials,
         grab_data: grabData,
         identity: extractIdentity(provider, rawJson),
-        last_refresh: extractLastRefresh(grabData, rawJson),
+        last_refresh: lastRefresh || undefined,
       });
       await clearStale(profile.id);
 

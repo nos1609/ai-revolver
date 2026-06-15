@@ -76,6 +76,16 @@ vi.mock("../../src/platform/fs.js", async (importOriginal) => {
   return { ...actual, fileExists: fsMocks.fileExists };
 });
 
+// ── node:fs/promises stat mock (W2 mtime for grab; default keeps existing last_refresh expectations)
+const fsPromisesMocks = vi.hoisted(() => ({ stat: vi.fn() }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    stat: fsPromisesMocks.stat,
+  };
+});
+
 vi.spyOn(console, "log").mockImplementation(() => {});
 
 let tempRoot: string;
@@ -98,6 +108,7 @@ beforeEach(async () => {
   tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "airev-grab-poly-"));
   configState.configDir = path.join(tempRoot, "ai-revolver");
   vi.clearAllMocks();
+  fsPromisesMocks.stat.mockResolvedValue({ mtimeMs: 1_700_000_001_000 } as any);
   vi.spyOn(console, "log").mockImplementation(() => {});
 
   registryMocks.getProfile.mockResolvedValue(fakeProfile);

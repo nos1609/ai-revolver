@@ -145,7 +145,9 @@ describe("codex satellite E2E", () => {
 
     const vaultEntry1 = vaultStore.get("prof_side1") as any;
     expect(vaultEntry1).toBeDefined();
-    expect(vaultEntry1.last_refresh).toBe(T0);
+    // mtime is now a valid freshness signal on FS side (for providers without explicit last_refresh);
+    // after render the sat file has a newer mtime than the previous T0 in the test fixture.
+    expect(vaultEntry1.last_refresh).toBeGreaterThan(T0 - 1);
     expect(vaultEntry1.identity?.["tokens.account_id"]).toBe("acc_A");
 
     // 3. render — materialise satellite (side1 is no longer active main)

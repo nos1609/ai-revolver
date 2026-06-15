@@ -1,4 +1,5 @@
 import path from "node:path";
+import { stat } from "node:fs/promises";
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
 import { readExtraFiles, writeExtraFiles } from "../providers/extra-files.js";
@@ -15,6 +16,7 @@ import { fileExists } from "../platform/fs.js";
 import { getByPath } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
 import type { ProviderDefinition } from "../types/index.js";
+import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -147,8 +149,22 @@ export async function sync(
       }
     }
 
-    // ── Freshness merge ───────────────────────────────────────
-    const fsLastRefresh = extractLastRefreshFromRaw(fsRead.grab_data, fsRawJson);
+    // ── Freshness merge (universal, mtime mandatory for FS side) ─────────────
+    // stat the FS credential file to get mtimeMs — this enables sync/status for
+    // providers that do not expose last_refresh (Claude, Gemini etc.).
+    let fsMtime = 0;
+    try {
+      const fsStat = await stat(fsPath);
+      fsMtime = fsStat.mtimeMs;
+    } catch {
+      // fallback 0 (oldest) if stat fails (should not happen after fileExists guard in prod;
+      // in unit tests with fake paths this keeps back-compat for last_refresh-bearing fixtures)
+    }
+    const fsLastRefresh = computeFreshness({
+      grabData: fsRead.grab_data,
+      rawJson: fsRawJson,
+      fileMtimeMs: fsMtime,
+    });
     const vaultLastRefresh = vaultEntry.last_refresh ?? 0;
 
     let resolution: SyncResolution = { resolution: "no-op" };
@@ -177,9 +193,25 @@ export async function sync(
 
     // ── Execute resolution ────────────────────────────────────
     if (resolution.resolution === "push-fs-to-vault") {
+      // Merge guard on vault side for push-fs (even under --force):
+      // empty sensitive tokens from FS never clobber a live vault copy.
+      // Explicit log for the silent preserve case (design requirement).
+      const incomingRt = fsRead.credentials.refresh_token;
+      const vaultRt = vaultEntry.credentials?.refresh_token;
+      if (opts.force && opts.direction === "push" && (!incomingRt || String(incomingRt).trim() === "") && vaultRt) {
+        console.log(chalk.dim(
+          trf(
+            `  merge guard preserved vault refresh_token (FS был пустой)`,
+            `  merge guard preserved vault refresh_token (FS was empty)`,
+            {},
+          ),
+        ));
+      }
+
+      const mergedCreds = mergeCredentials(vaultEntry.credentials || {}, fsRead.credentials);
       await vault.put({
         profile_id: profile.id,
-        credentials: fsRead.credentials,
+        credentials: mergedCreds,
         grab_data: fsRead.grab_data,
         identity: extractIdentityFromRaw(provider, fsRawJson),
         last_refresh: fsLastRefresh,
@@ -188,9 +220,20 @@ export async function sync(
         trf(`  ✓ "{n}": FS → vault`, `  ✓ "{n}": FS → vault`, { n: profileName }),
       ));
     } else if (resolution.resolution === "push-vault-to-fs") {
-      // Compare-and-swap: re-read FS to detect concurrent rotation
+      // Compare-and-swap: re-read FS to detect concurrent rotation (now with mtime for Claude-like)
       const fsRawRecheck = await readProviderJsonFile<Record<string, unknown>>(fsPath, oauth.credential_file.format);
-      const fsRecheckRefresh = extractLastRefreshFromRaw({}, fsRawRecheck);
+      let recheckMtime = 0;
+      try {
+        const fsRecheckStat = await stat(fsPath);
+        recheckMtime = fsRecheckStat.mtimeMs;
+      } catch {
+        // fallback
+      }
+      const fsRecheckRefresh = computeFreshness({
+        grabData: {},
+        rawJson: fsRawRecheck,
+        fileMtimeMs: recheckMtime,
+      });
 
       if (fsRecheckRefresh !== fsLastRefresh) {
         throw new Error(
@@ -227,37 +270,7 @@ export async function sync(
   });
 }
 
-// ── Helpers ───────────────────────────────────────────────────
-
-/**
- * Extract last_refresh timestamp from grab_data or raw JSON.
- * Mirrors the extraction logic in grab.ts:extractLastRefresh.
- * Returns 0 when the field is absent (treats missing as "oldest").
- *
- * Note: mtime-based fallback is intentionally omitted in V1.
- * Providers that never emit last_refresh will always produce 0,
- * causing sync to be a no-op unless --force is used.
- */
-function extractLastRefreshFromRaw(
-  grabData: Record<string, unknown>,
-  rawJson: Record<string, unknown>,
-): number {
-  // Try grab_data first (provider explicitly declared last_refresh as grab_field)
-  const fromGrab = grabData["last_refresh"];
-  if (typeof fromGrab === "number" && Number.isFinite(fromGrab)) return fromGrab;
-  if (typeof fromGrab === "string") {
-    const d = Date.parse(fromGrab);
-    if (Number.isFinite(d)) return d;
-  }
-  // Fallback: raw JSON top-level field
-  const fromRaw = rawJson["last_refresh"];
-  if (typeof fromRaw === "number" && Number.isFinite(fromRaw)) return fromRaw;
-  if (typeof fromRaw === "string") {
-    const d = Date.parse(fromRaw);
-    if (Number.isFinite(d)) return d;
-  }
-  return 0;
-}
+// (old extractLastRefreshFromRaw removed — now unified in credential-policy.computeFreshness + mtime stat)
 
 function extractIdentityFromRaw(
   provider: ProviderDefinition,
