@@ -28,6 +28,15 @@ auth_methods:
       atomic_write: true
       preserve_unknown_fields: true
 
+    # Companion file — Claude Code reads oauthAccount for UI/plan/limits display.
+    # Must be switched together with .credentials.json (no logout/revoke).
+    extra_files:
+      - path: "${HOME}/.claude.json"
+        format: json
+        grab_fields:
+          - "oauthAccount"
+        permissions: 0o644
+
     # Claude OAuth refresh.
     # Response: { access_token, refresh_token, expires_in } — seconds, so we
     # convert to absolute epoch ms via `now_ms_plus_seconds`.

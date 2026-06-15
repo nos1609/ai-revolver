@@ -1,6 +1,7 @@
 import path from "node:path";
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
+import { readExtraFiles, writeExtraFiles } from "../providers/extra-files.js";
 import { readCredentials } from "../providers/reader.js";
 import { writeCredentials } from "../providers/writer.js";
 import { readProviderJsonFile } from "../providers/json.js";
@@ -85,8 +86,9 @@ export async function sync(
     }
 
     // Resolve FS path: active main → native, else → satellite
+    const isMain = await isActiveMain(providerName, profileName);
     const nativePath = resolveTemplatePath(oauth.credential_file.path);
-    const fsPath = (await isActiveMain(providerName, profileName))
+    const fsPath = isMain
       ? nativePath
       : satelliteCredentialPath(providerName, profileName, path.basename(nativePath));
 
@@ -115,6 +117,9 @@ export async function sync(
     // Read FS credentials (normalized) and raw JSON for identity check
     const fsRead = await readCredentials(oauth.credential_file, oauth.credential_secrets, fsPath);
     const fsRawJson = await readProviderJsonFile<Record<string, unknown>>(fsPath, oauth.credential_file.format);
+    if (isMain) {
+      Object.assign(fsRead.grab_data, await readExtraFiles(oauth.extra_files));
+    }
 
     // ── Identity guard ────────────────────────────────────────
     if (!opts.force) {
@@ -208,6 +213,9 @@ export async function sync(
         oauth.credential_secrets,
         fsPath,
       );
+      if (isMain) {
+        await writeExtraFiles(oauth.extra_files, vaultEntry.grab_data);
+      }
       console.log(chalk.green(
         trf(`  ✓ "{n}": vault → FS`, `  ✓ "{n}": vault → FS`, { n: profileName }),
       ));

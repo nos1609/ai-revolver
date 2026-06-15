@@ -1,4 +1,5 @@
 import type { ProviderDefinition, ProfileCredentials, AuthType } from "../types/index.js";
+import { writeExtraFiles } from "../providers/extra-files.js";
 import { writeCredentials } from "../providers/writer.js";
 
 export type SwitchMethod = "env" | "file_merge";
@@ -7,6 +8,7 @@ export interface SwitchResult {
   method: SwitchMethod;
   envVars?: Record<string, string>;
   filePath?: string;
+  extraFilePaths?: string[];
 }
 
 /**
@@ -64,9 +66,11 @@ async function routeFileMerge(
   }
 
   await writeCredentials(oauthDef.credential_file, data, oauthDef.credential_secrets);
+  const extraFilePaths = await writeExtraFiles(oauthDef.extra_files, data.grab_data);
 
   return {
     method: "file_merge",
     filePath: oauthDef.credential_file.path,
+    extraFilePaths,
   };
 }

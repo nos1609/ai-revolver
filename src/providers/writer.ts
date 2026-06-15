@@ -58,9 +58,11 @@ export async function writeCredentials(
     }
   }
 
-  // Write grab_data fields (path is the key)
-  for (const [fieldPath, value] of Object.entries(data.grab_data)) {
-    setByPath(existing, fieldPath, value);
+  // Write only credential-file grab_fields (extra_files use writeExtraFiles).
+  for (const fieldPath of credFile.grab_fields) {
+    if (fieldPath in data.grab_data) {
+      setByPath(existing, fieldPath, data.grab_data[fieldPath]);
+    }
   }
 
   const perms = typeof credFile.permissions === "number" ? credFile.permissions : 0o600;

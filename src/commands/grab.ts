@@ -1,6 +1,7 @@
 import path from "node:path";
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
+import { readExtraFiles } from "../providers/extra-files.js";
 import { readCredentials } from "../providers/reader.js";
 import { readProviderJsonFile } from "../providers/json.js";
 import { addProfile, clearStale, getProfile, isActiveMain, setActive } from "../core/registry.js";
@@ -152,7 +153,11 @@ export async function grab(providerName: string, profileName: string, opts: Grab
       const result = await readCredentials(oauthDef.credential_file, oauthDef.credential_secrets, source.path);
       authType = "oauth";
       credentials = result.credentials;
-      grabData = result.grab_data;
+      grabData = {
+        ...result.grab_data,
+        // Companion files (e.g. ~/.claude.json) live only on the native main path.
+        ...(source.kind === "native" ? await readExtraFiles(oauthDef.extra_files) : {}),
+      };
 
       // Читаем сырой JSON для извлечения identity (fields — dotted paths в raw JSON)
       rawJson = await readProviderJsonFile<Record<string, unknown>>(credPath, oauthDef.credential_file.format);

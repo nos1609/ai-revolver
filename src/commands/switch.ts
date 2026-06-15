@@ -83,6 +83,9 @@ export async function switchProfile(
     if (result.method === "file_merge") {
       const displayPath = resolveTemplatePath(result.filePath ?? "");
       console.log(chalk.green(trf(`  ✓ Обновлён {path}`, `  ✓ Merged {path}`, { path: displayPath })));
+      for (const extraPath of result.extraFilePaths ?? []) {
+        console.log(chalk.green(trf(`  ✓ Обновлён {path}`, `  ✓ Merged {path}`, { path: extraPath })));
+      }
     } else if (result.method === "env") {
       console.log(chalk.green(tr(`  ✓ Env-переменные готовы:`, `  ✓ Env vars ready:`)));
       for (const [k, v] of Object.entries(result.envVars ?? {})) {
