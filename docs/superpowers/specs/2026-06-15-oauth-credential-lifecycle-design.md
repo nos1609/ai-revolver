@@ -55,7 +55,7 @@ Add a small, provider-agnostic credential lifecycle layer that:
 
 | Command | Responsibility |
 |---------|----------------|
-| `grab` | Initial capture. Without `--force`: no-op if vault entry exists, hint to use `sync`. With `--force`: emergency overwrite from FS. **No diagnostic output beyond existing hints.** |
+| `grab` | Initial capture. Without `--force`: no-op if vault entry exists, hint to use `sync`. With `--force`: emergency overwrite from FS for **non-empty** incoming fields. Empty `refresh_token` never clobbers a live vault copy (by design). **No diagnostic output beyond existing hints.** |
 | `sync` | Sole reconcile path FS ↔ vault: identity guard, freshness merge, push/pull, error hints (`grab --force` / `render --force`). |
 | `status` | Read-only observability: `sync_hint`, identity, `last_refresh`. Extended hints for degraded credentials. |
 | `switch` | Pre-sync outgoing profile (unchanged), then vault → FS via router. |
@@ -109,13 +109,27 @@ Apply policy to normalized OAuth fields present in any provider mapping:
 | Caller | When |
 |--------|------|
 | `reader.ts` | After mapping extraction → `sanitizeCredentialsRead` |
-| `writer.ts` | Before write: merge file existing JSON mapping fields with incoming credentials via policy |
+| `writer.ts` | Read existing mapped credentials from file JSON, then `mergeCredentials(existing, sanitize(incoming))` before `setByPath` (see Writer merge below) |
 | `grab.ts` | `vault.put`: `mergeCredentials(existingVault.credentials, incoming)` |
 | `sync.ts` | push-fs-to-vault: merge into vault entry; push-vault-to-fs: writer merge |
 | `usage` persist | Uses existing `persistCredentials`; writer path gets policy via `writer.ts` |
 
-`grab --force` still overwrites in the sense of upserting, but merge policy
-prevents a dead FS session from erasing a live vault `refresh_token`.
+`grab --force` still overwrites in the sense of upserting non-empty fields, but
+merge policy prevents a dead FS session from erasing a live vault
+`refresh_token`. This is intentional: `--force` is not a bypass for empty-token
+clobber. After re-auth in the provider CLI, FS should carry a non-empty
+refresh before `grab --force` can replace vault tokens.
+
+#### Writer merge (explicit)
+
+Before writing mapping fields, `writeCredentials` must:
+
+1. Extract `existingCreds` from the on-disk file using `credFile.mapping`
+2. `merged = mergeCredentials(existingCreds, sanitizeCredentials(incoming))`
+3. Write `merged` via `setByPath`, not raw `data.credentials`
+
+This closes switch vault→FS when vault was poisoned but FS still holds a good
+refresh.
 
 ### 2. Universal freshness
 
@@ -126,9 +140,8 @@ New function: `computeFreshness(ctx)` in `src/core/credential-policy.ts` or
 interface FreshnessContext {
   grabData: Record<string, unknown>;
   rawJson: Record<string, unknown>;
-  credentials: Record<string, unknown>;
-  /** Required for FS-side evaluation only */
-  fileMtimeMs?: number;
+  /** Required when evaluating FS-side freshness (sync/status/grab from file) */
+  fileMtimeMs: number;
 }
 
 function computeFreshness(ctx: FreshnessContext): number;
@@ -138,9 +151,15 @@ function computeFreshness(ctx: FreshnessContext): number;
 
 1. `grab_data["last_refresh"]` or raw JSON `last_refresh` (number or ISO string)
    — Codex and any provider that exposes the field
-2. `credentials.expires_at` when finite — Claude, Gemini
-3. `fileMtimeMs` when provided — FS-side fallback per original satellite-router
-   design intent
+2. `fileMtimeMs` — **mandatory on FS-side**; enables Claude/Gemini sync without
+   `last_refresh` in the credential file
+
+**Do not use `expires_at`.** It is an access-token deadline, not a refresh
+timestamp. Using it as freshness can mark an expired FS session as "newer" and
+trigger a poison push to vault.
+
+Vault-side calls pass `fileMtimeMs: 0` (ignored); vault freshness comes from
+stored `vault.last_refresh` only.
 
 Returns `0` when no signal is available.
 
@@ -152,8 +171,9 @@ Unify logic currently split across:
 - `sync.ts` → `extractLastRefreshFromRaw`
 - `status.ts` → `extractTs`
 
-All call `computeFreshness` with appropriate context. Vault-side calls omit
-`fileMtimeMs`.
+All call `computeFreshness`. FS-side callers must stat the credential file and
+pass `fileMtimeMs`. Vault-side comparisons use `vaultEntry.last_refresh ?? 0`
+directly (not `computeFreshness`).
 
 #### `vault.last_refresh` updates
 
@@ -166,25 +186,22 @@ All call `computeFreshness` with appropriate context. Vault-side calls omit
 Today `usage` updates credentials but not `last_refresh` — that gap is closed
 here.
 
-### 3. Status hints (diagnostics live here)
+### 3. Status hints (v1 — after freshness works)
 
-Extend `sync_hint` in `status` (machine + human readable). Existing hints
-unchanged: `in-sync`, `fs-newer`, `vault-newer`, `identity-mismatch`, etc.
+Extend `sync_hint` in `status` only after `computeFreshness` + mtime land.
+Existing hints unchanged: `in-sync`, `fs-newer`, `vault-newer`,
+`identity-mismatch`, etc.
 
-New hints when identity check passes:
+Deferred to same PR (depends on working freshness):
 
 | Hint | Condition | User action |
 |------|-----------|-------------|
-| `fs-degraded` | FS refresh degraded, vault not | `airev <p> sync <n>` (expect vault → FS pull) |
+| `fs-degraded` | FS refresh degraded, vault not | `airev <p> sync <n>` (vault → FS pull) |
 | `both-degraded` | Both sides refresh degraded | Re-auth in provider CLI, then `grab --force` |
 | `vault-degraded` | Vault degraded, FS not | `airev <p> sync <n>` if FS newer; else re-auth + `grab --force` |
 
-`sync` itself does not add new hint strings — it continues to print resolution
-and existing error templates. `status` is the place to see which case applies.
-
-When `both-degraded`, `sync` freshness merge is a no-op; identity guard may
-still pass. No automatic stale flag from `sync` — `usage` refresh failure and
-existing stale machinery remain the live/dead signal.
+`sync` does not add new hint strings. `usage` stale marking remains the live/dead
+signal for API-proven dead refresh.
 
 ### 4. Pre-switch behavior (unchanged flow, better data)
 
@@ -241,9 +258,13 @@ Extend existing sync tests:
 - Claude-like fixture without `last_refresh`: FS mtime newer → push-fs-to-vault
 - Vault newer with good refresh, FS empty refresh → pull restores FS (writer merge)
 
-Extend `status` tests:
+Extend `status` tests (after degraded hints):
 
 - `fs-degraded` / `both-degraded` hints
+
+Negative test:
+
+- `expires_at` present but large does **not** affect `computeFreshness`
 
 Regression:
 
@@ -259,9 +280,18 @@ Regression:
   `status` surfaces `both-degraded` / `vault-degraded`
 - Users may heal FS from vault via `sync` when vault still holds a good refresh
 
+## Review notes (qodercli / Qwen3.7-Max, 2026-06-15)
+
+- Removed `expires_at` from freshness (deadline ≠ refresh time)
+- Writer merge algorithm made explicit
+- `fileMtimeMs` mandatory on FS-side
+- `grab --force` documented as non-bypass for empty refresh clobber
+- Gaps tracked for later: `extra_files`, keytar write-path, satellite partial
+  `grab_data`
+
 ## Future work (out of scope)
 
 - Optional `oauth.credential_policy` / `oauth.freshness` blocks in provider YAML
 - Refresh-before-switch when access expired and vault refresh is valid
-- `sync` detecting concurrent CLI rotation via expires_at delta in addition to
-  last_refresh CAS
+- `sync` CAS improvements for providers without `last_refresh`
+- Merge guards for `extra_files` companion data
