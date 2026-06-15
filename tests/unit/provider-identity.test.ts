@@ -2,14 +2,18 @@ import os from "node:os";
 import { describe, it, expect } from "vitest";
 import { loadProviderFromString } from "../../src/providers/loader.js";
 
-// ── minimal valid provider YAML template ──────────────────────────────────────
+// Use forward slashes and single quotes in the YAML value so that the generated
+// provider manifest is valid YAML on both Windows and Unix.
+// (double-quoted YAML interprets \U etc. as escapes; this test only cares about
+// schema parsing of the identity block, not real FS access.)
+const portableHome = os.homedir().replace(/\\/g, "/");
 const baseYaml = (extra = "") => `
 name: test-provider
 version: 1
 auth_methods:
   oauth:
     credential_file:
-      path: "${os.homedir()}/.test/auth.json"
+      path: '${portableHome}/.test/auth.json'
       format: json
       mapping: {}
       grab_fields: []
