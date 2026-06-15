@@ -78,9 +78,9 @@ if (fs.existsSync(registryPath)) {
 
 // 4. Clean up
 fs.unlinkSync(vaultPath);
-try { fs.unlinkSync(vaultPath + ".bak"); } catch {}
-try { fs.unlinkSync(registryPath + ".bak"); } catch {}
-try { fs.unlinkSync(path.join(configDir, "active.json.bak")); } catch {}
+try { fs.unlinkSync(vaultPath + ".bak"); } catch { /* optional backup */ }
+try { fs.unlinkSync(registryPath + ".bak"); } catch { /* optional backup */ }
+try { fs.unlinkSync(path.join(configDir, "active.json.bak")); } catch { /* optional backup */ }
 
 console.log("\nDone. Profiles now use DPAPI — no password needed.");
 console.log("Run: airev list");

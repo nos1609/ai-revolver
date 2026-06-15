@@ -4,8 +4,6 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
-<<<<<<< HEAD
-
     coverage: {
       provider: "v8",
       // Coverage is opt-in via `vitest --coverage` or `npm run coverage`.

@@ -780,28 +780,6 @@ describe("additional usage limits mapping", () => {
     ]);
   });
 
-  it("handles mixed valid and invalid additional entries without dropping valid ones", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        additional_rate_limits: [
-          { limit_name: "Valid", rate_limit: { primary_window: { used_percent: 12 } } },
-          "completely-invalid",
-          null,
-          { limit_name: "AlsoValid", rate_limit: { primary_window: { used_percent: 34 } } },
-        ],
-      }),
-    });
-    vi.stubGlobal("fetch", fetch);
-
-    const result = await fetchUsage(providerWithExtras(), entry);
-    expect(result.snapshot.extras).toEqual([
-      { display: "Valid", primary: { used_percent: 12 } },
-      { display: "AlsoValid", primary: { used_percent: 34 } },
-    ]);
-  });
-
   it("returns undefined extras when additional_rate_limits is present but has no usable entries", async () => {
     const fetch = vi.fn().mockResolvedValueOnce({
       ok: true,

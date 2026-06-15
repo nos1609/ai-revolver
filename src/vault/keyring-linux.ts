@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Linux secret store via `secret-tool` (libsecret).
@@ -13,7 +16,7 @@ export async function secretToolStore(key: string, data: string): Promise<void> 
       "secret-tool",
       ["store", "--label", `ai-revolver: ${key}`, "service", "ai-revolver", "account", key],
       { timeout: 15000 },
-      (err) => (err ? reject(err) : resolve()),
+      (err) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve()),
     );
     child.stdin?.end(data, "utf8");
   });
@@ -27,7 +30,7 @@ export async function secretToolLoad(key: string): Promise<string | null> {
         ["lookup", "service", "ai-revolver", "account", key],
         { timeout: 10000, encoding: "utf8" },
         (err, stdout, stderr) => {
-          if (err) reject(err);
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
           else resolve({ stdout: String(stdout), stderr: String(stderr) });
         },
       );

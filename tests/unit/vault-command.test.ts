@@ -397,7 +397,7 @@ describe("vault migrate additional branches", () => {
     }
   });
 
-  it("migrate with --yes on keyring to file when already on file is a safe no-op", async () => {
+  it("rejects migrate to file when already on encrypted-file backend", async () => {
     infoMocks.effectiveBackend = {
       backend: "encrypted-file",
       keyringAvailable: true,
@@ -407,10 +407,12 @@ describe("vault migrate additional branches", () => {
     };
 
     const { vaultCommand } = await import("../../src/commands/vault.js");
-    await expect(vaultCommand("migrate", "file", { yes: true })).resolves.not.toThrow();
+    await expect(vaultCommand("migrate", "file", { yes: true })).rejects.toThrow(
+      /already the same: encrypted-file/,
+    );
   });
 
-  it("handles interactive migration cancellation gracefully", async () => {
+  it("rejects non-TTY migration without --yes or --keep-source", async () => {
     infoMocks.effectiveBackend = {
       backend: "keyring",
       keyringAvailable: true,
@@ -419,9 +421,10 @@ describe("vault migrate additional branches", () => {
       keyringLabel: "Linux libsecret",
     };
 
-    // Simulate user not confirming
     const { vaultCommand } = await import("../../src/commands/vault.js");
-    await expect(vaultCommand("migrate", "file", {})).resolves.not.toThrow();
+    await expect(vaultCommand("migrate", "file", {})).rejects.toThrow(
+      /requires --yes or --keep-source/,
+    );
   });
 
   it("migrate from keyring to file with zero entries is a no-op", async () => {

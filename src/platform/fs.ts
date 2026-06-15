@@ -48,7 +48,7 @@ export async function atomicWrite(
     try {
       await fs.rename(tmp, target);
       break;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, delay));
         delay *= 2;
