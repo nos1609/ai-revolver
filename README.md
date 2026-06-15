@@ -10,6 +10,11 @@ airev codex switch personal        # переключиться (Windows Hello /
 airev codex rename work main       # переименовать
 airev codex drop old               # удалить
 
+airev codex render personal        # создать FS-копию (сателлит) профиля
+airev codex sync work              # синхронизация vault ↔ FS с проверкой freshness и identity
+airev codex evict old              # удалить сателлит (FS-копию)
+airev vault unlock codex work      # разблокировать профиль в vault
+
 airev list                         # все профили (все провайдеры)
 airev status                       # локальный статус (быстро, без сети)
 airev usage                        # live-лимиты 5h / 7d по ВСЕМ oauth-профилям
@@ -43,6 +48,8 @@ airev vault migrate keyring --yes  # copy+verify, затем удалить sour
 - **Транспортный пароль** — пароль export/import-файла. В английской локали это `transfer file password`; он не становится паролем локального `vault.enc`.
 - **Пароль локального vault-а** — пароль только для `vault.enc`; меняется через `vault passwd`, если effective backend сейчас `encrypted-file`. Для OS keyring этот пароль не применяется.
 - **Vault commands** — `vault export/import` основной интерфейс переносимости; `vault migrate <keyring|file>` локально переносит entries между backend-ами через copy → verify → optional delete-source. Если keyring доступен, но пустой, а `vault.enc` существует, обычный CLI читает `vault.enc`; поэтому `migrate file --yes` реально переключает на file-backend, а `--keep-source` остаётся fallback-copy. Старые top-level `export/import` оставлены как совместимые алиасы.
+- **Render / Sync / Evict** — управление сателлитными профилями (локальными FS-копиями). `render` создаёт копию, `evict` удаляет, `sync` выполняет двунаправленную синхронизацию vault ↔ FS с guard'ами: пустой `refresh_token` не затирает живой vault (и наоборот), сравнение по `last_refresh` + mtime файла (для Claude/Gemini, у которых нет поля `last_refresh` в credentials).
+- **Status hints и freshness** — `airev status` теперь дополнительно показывает `fs-degraded` / `vault-degraded` / `both-degraded`, когда refresh_token отсутствует или пустой. Freshness учитывает как явный `last_refresh` (если провайдер его отдаёт), так и mtime credential-файла.
 - **Автодополнение shell** — `airev completion <shell>` печатает скрипт для `bash`, `zsh`, `fish` или `powershell`. Первая версия дополняет команды, провайдеры, действия и флаги, но не имена профилей.
 
 ## Автодополнение
