@@ -150,7 +150,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
       if (providerName === "claude") {
         let companionJson: Record<string, unknown> | undefined;
         const companionDef = oauthDef.extra_files?.[0];
-        if (companionDef) {
+        if (source.kind === "native" && companionDef) {
           const companionPath = resolveTemplatePath(companionDef.path);
           if (await fileExists(companionPath)) {
             companionJson = await readProviderJsonFile<Record<string, unknown>>(
