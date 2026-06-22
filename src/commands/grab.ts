@@ -12,11 +12,10 @@ import { withProfileLock } from "../core/lock.js";
 import { satelliteCredentialPath } from "../core/satellite.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
-import { getByPath } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
 import type { AuthType, ProviderDefinition } from "../types/index.js";
 import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
-import { hasDynamicBucket, detectBucketKey, resolveBucketPath } from "../providers/bucket.js";
+import { extractIdentityFromRaw } from "../core/identity.js";
 
 export interface GrabOptions {
   apiKey?: string;
@@ -78,34 +77,6 @@ async function resolveGrabSource(
   );
 }
 
-// ── Identity extraction ───────────────────────────────────
-
-function extractIdentity(
-  provider: ProviderDefinition,
-  rawJson: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  if (!provider.identity) return undefined;
-  const oauth = provider.auth_methods.oauth;
-  const credFile = oauth?.credential_file;
-  const dyn = credFile ? hasDynamicBucket(credFile) : false;
-  let bucketKey: string | undefined;
-  if (dyn && credFile && credFile.dynamic_bucket_prefix) {
-    try {
-      bucketKey = detectBucketKey(rawJson, credFile.dynamic_bucket_prefix);
-    } catch {
-      bucketKey = undefined;
-    }
-  }
-  const out: Record<string, unknown> = {};
-  for (const field of provider.identity.fields) {
-    const eff = bucketKey ? resolveBucketPath(field, bucketKey) : field;
-    const v = getByPath(rawJson, eff);
-    if (v == null) return undefined; // identity неполная → не записываем
-    out[field] = v; // store under declared (relative for dynamic) name
-  }
-  return out;
-}
-
 // (old extractLastRefresh removed — unified via credential-policy.computeFreshness + mtime stat)
 
 // ── Main function ─────────────────────────────────────────
@@ -163,7 +134,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
       // Читаем сырой JSON для извлечения identity (fields — dotted paths в raw JSON).
       // Для binary-passthrough: JSON парсинг невозможен (opaque blob). Строим
       // синтетический Record, в котором каждый ключ credentials с путём "."
-      // указывает на сырое содержимое файла — extractIdentity резолвит identity.fields
+      // указывает на сырое содержимое файла — extractIdentityFromRaw резолвит identity.fields
       // против этого Record так же, как против распарсенного JSON для json/jsonc.
       if (oauthDef.credential_file.format === "binary-passthrough") {
         const content = await fs.readFile(credPath, "utf-8");
@@ -235,7 +206,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
         profile_id: profile.id,
         credentials: finalCredentials,
         grab_data: grabData,
-        identity: extractIdentity(provider, rawJson),
+        identity: extractIdentityFromRaw(provider, rawJson),
         last_refresh: lastRefresh || undefined,
       });
       await clearStale(profile.id);

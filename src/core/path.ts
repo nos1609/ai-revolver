@@ -15,8 +15,24 @@ export function pathSegments(path: string): string[] {
       }
       let j = i + 2;
       let value = "";
-      while (j < path.length && path[j] !== quote) {
-        value += path[j];
+      let escaped = false;
+      while (j < path.length) {
+        const ch = path[j];
+        if (escaped) {
+          value += ch;
+          escaped = false;
+          j++;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          j++;
+          continue;
+        }
+        if (ch === quote) {
+          break;
+        }
+        value += ch;
         j++;
       }
       if (path[j] !== quote || path[j + 1] !== "]") {

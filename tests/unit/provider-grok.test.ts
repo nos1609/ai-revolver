@@ -7,6 +7,8 @@ import { readCredentials } from "../../src/providers/reader.js";
 import { writeCredentials } from "../../src/providers/writer.js";
 import { loadProviderFromString } from "../../src/providers/loader.js";
 import { checkIdentity } from "../../src/core/identity.js";
+import { resolveBucketPath } from "../../src/providers/bucket.js";
+import { pathSegments } from "../../src/core/path.js";
 
 const tempDirs: string[] = [];
 
@@ -93,7 +95,10 @@ describe("grok provider", () => {
           user_id: "new-uid",
           email: "new@x.ai",
           team_id: "new-team",
-          principal_id: "new-prin",
+          auth_mode: "oauth",
+          expires_at: "2026-06-23T00:00:00Z",
+          first_name: "G",
+          last_name: "Rok",
           // note: relative keys (per yaml with dynamic_bucket_prefix) + _auth_bucket_key
         },
       },
@@ -106,9 +111,12 @@ describe("grok provider", () => {
     expect(b.user_id).toBe("new-uid");
     expect(b.email).toBe("new@x.ai");
     expect(b.team_id).toBe("new-team");
-    expect(b.principal_id).toBe("new-prin");
+    expect(b.auth_mode).toBe("oauth");
+    expect(b.expires_at).toBe("2026-06-23T00:00:00Z");
+    expect(b.first_name).toBe("G");
+    expect(b.last_name).toBe("Rok");
     expect(b.extra_unknown).toBe("must-stay");
-    expect(b.create_time).toBe("2025-01-01");
+    expect(b.create_time).toBe("2025-01-01"); // preserved via preserve_unknown_fields
   });
 
   it("loadProviderFromString validates identity block", async () => {
@@ -152,7 +160,7 @@ describe("grok provider", () => {
         access_token: "key",
         refresh_token: "refresh_token",
       },
-      grab_fields: ["user_id", "email", "team_id", "principal_id", "auth_mode", "create_time"],
+      grab_fields: ["user_id", "email", "team_id", "auth_mode", "expires_at", "first_name", "last_name"],
       permissions: 0o600,
       atomic_write: true,
       preserve_unknown_fields: true,
@@ -309,5 +317,17 @@ describe("grok provider", () => {
     expect(after[B].extra_unknown).toBe("keep");
     const prefixKeys = Object.keys(after).filter((k: string) => k.startsWith("https://auth.x.ai::"));
     expect(prefixKeys).toEqual([B]);
+  });
+
+  it("bucket: resolveBucketPath escapes ' in bucketKey; pathSegments unescapes", () => {
+    const bucketWithQuote = "https://auth.x.ai::user'with'quote-123";
+    const resolved = resolveBucketPath("user_id", bucketWithQuote);
+    expect(resolved).toBe("['https://auth.x.ai::user\\'with\\'quote-123'].user_id");
+    const segments = pathSegments(resolved);
+    expect(segments).toEqual([bucketWithQuote, "user_id"]);
+    // also verify no-escape normal case
+    const normal = resolveBucketPath("email", "https://auth.x.ai::noquote");
+    expect(normal).toBe("['https://auth.x.ai::noquote'].email");
+    expect(pathSegments(normal)).toEqual(["https://auth.x.ai::noquote", "email"]);
   });
 });

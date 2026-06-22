@@ -145,3 +145,36 @@ function getEffectiveIdentityPath(
     return field;
   }
 }
+
+// ── Identity extraction (DRY) ────────────────────────────────
+
+/**
+ * Extract identity snapshot for vault from raw credential JSON.
+ * Resolves dynamic bucket if declared; stores values under bare field names.
+ * Returns undefined if any declared identity field is missing (incomplete).
+ */
+export function extractIdentityFromRaw(
+  provider: ProviderDefinition,
+  rawJson: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!provider.identity) return undefined;
+  const oauth = provider.auth_methods.oauth;
+  const credFile = oauth?.credential_file;
+  const dyn = credFile ? hasDynamicBucket(credFile) : false;
+  let bucketKey: string | undefined;
+  if (dyn && credFile && credFile.dynamic_bucket_prefix) {
+    try {
+      bucketKey = detectBucketKey(rawJson, credFile.dynamic_bucket_prefix);
+    } catch {
+      bucketKey = undefined;
+    }
+  }
+  const out: Record<string, unknown> = {};
+  for (const field of provider.identity.fields) {
+    const eff = bucketKey ? resolveBucketPath(field, bucketKey) : field;
+    const v = getByPath(rawJson, eff);
+    if (v == null) return undefined;
+    out[field] = v;
+  }
+  return out;
+}

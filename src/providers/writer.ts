@@ -92,6 +92,18 @@ export async function writeCredentials(
   let incomingBucketKey = (data.grab_data && (data.grab_data._auth_bucket_key as string | undefined)) || undefined;
   let bucketKey = incomingBucketKey;
   if (dyn && prefix && !bucketKey) {
+    // legacy: infer bucket from bracketed grab_data keys e.g. "['https://auth.x.ai::...'].user_id"
+    for (const k of Object.keys(data.grab_data || {})) {
+      if (typeof k === "string") {
+        const m = k.match(/\['(https:\/\/auth\.x\.ai::[^']+)'\]/);
+        if (m && m[1]) {
+          bucketKey = m[1];
+          break;
+        }
+      }
+    }
+  }
+  if (dyn && prefix && !bucketKey) {
     // legacy grab_data without _auth_bucket_key: fallback to detect from disk
     try {
       bucketKey = detectBucketKey(existing, prefix);

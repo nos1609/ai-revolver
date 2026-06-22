@@ -31,9 +31,10 @@ auth_methods:
         - "user_id"
         - "email"
         - "team_id"
-        - "principal_id"
         - "auth_mode"
-        - "create_time"
+        - "expires_at"
+        - "first_name"
+        - "last_name"
       permissions: 0o600
       atomic_write: true
       preserve_unknown_fields: true

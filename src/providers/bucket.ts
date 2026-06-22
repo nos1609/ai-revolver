@@ -49,13 +49,15 @@ export function detectBucketKey(
  * - If no bucketKey, return as-is.
  * - If path already bracketed (starts with [ or contains [' ), return as-is.
  * - Else (relative e.g. "key", "user_id"), return "['${bucketKey}'].${path}"
+ *   Single quotes used; ' and \ inside bucketKey are escaped as \' and \\ for parser.
  */
 export function resolveBucketPath(path: string, bucketKey: string | undefined): string {
   if (!bucketKey) return path;
   if (path.startsWith("[") || path.includes("['") || path.includes('["')) {
     return path;
   }
-  return `['${bucketKey}'].${path}`;
+  const escaped = bucketKey.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return `['${escaped}'].${path}`;
 }
 
 /**

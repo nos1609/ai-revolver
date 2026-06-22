@@ -11,13 +11,10 @@ import { getProfile, isActiveMain } from "../core/registry.js";
 import { openVault } from "../vault/factory.js";
 import { withProfileLock } from "../core/lock.js";
 import { satelliteCredentialPath } from "../core/satellite.js";
-import { checkIdentity } from "../core/identity.js";
+import { checkIdentity, extractIdentityFromRaw } from "../core/identity.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
-import { getByPath } from "../core/usage.js";
-import { hasDynamicBucket, detectBucketKey, resolveBucketPath } from "../providers/bucket.js";
 import { tr, trf } from "../i18n.js";
-import type { ProviderDefinition } from "../types/index.js";
 import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
 
 // ── Public types ──────────────────────────────────────────────
@@ -290,32 +287,4 @@ export async function sync(
 
     return resolution;
   });
-}
-
-// (old extractLastRefreshFromRaw removed — now unified in credential-policy.computeFreshness + mtime stat)
-
-function extractIdentityFromRaw(
-  provider: ProviderDefinition,
-  rawJson: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  if (!provider.identity) return undefined;
-  const oauth = provider.auth_methods.oauth;
-  const credFile = oauth?.credential_file;
-  const dyn = credFile ? hasDynamicBucket(credFile) : false;
-  let bucketKey: string | undefined;
-  if (dyn && credFile && credFile.dynamic_bucket_prefix) {
-    try {
-      bucketKey = detectBucketKey(rawJson, credFile.dynamic_bucket_prefix);
-    } catch {
-      bucketKey = undefined;
-    }
-  }
-  const out: Record<string, unknown> = {};
-  for (const field of provider.identity.fields) {
-    const eff = bucketKey ? resolveBucketPath(field, bucketKey) : field;
-    const v = getByPath(rawJson, eff);
-    if (v == null) return undefined;
-    out[field] = v;
-  }
-  return out;
 }
