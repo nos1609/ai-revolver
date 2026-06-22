@@ -16,6 +16,7 @@ import { tr, trf } from "../i18n.js";
 import type { AuthType, ProviderDefinition } from "../types/index.js";
 import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
 import { extractIdentityFromRaw } from "../core/identity.js";
+import { enrichClaudeGrabData } from "../providers/claude-companion.js";
 
 export interface GrabOptions {
   apiKey?: string;
@@ -144,6 +145,24 @@ export async function grab(providerName: string, profileName: string, opts: Grab
         }
       } else {
         rawJson = await readProviderJsonFile<Record<string, unknown>>(credPath, oauthDef.credential_file.format);
+      }
+
+      if (providerName === "claude") {
+        let companionJson: Record<string, unknown> | undefined;
+        const companionDef = oauthDef.extra_files?.[0];
+        if (companionDef) {
+          const companionPath = resolveTemplatePath(companionDef.path);
+          if (await fileExists(companionPath)) {
+            companionJson = await readProviderJsonFile<Record<string, unknown>>(
+              companionPath,
+              companionDef.format,
+            );
+          }
+        }
+        grabData = enrichClaudeGrabData(grabData, rawJson, {
+          profileName,
+          companionJson,
+        });
       }
 
       console.log(chalk.dim(trf(`  Найдено: {t}-сессия`, `  Found: {t} session`, { t: authType })));

@@ -16,6 +16,7 @@ import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 import { tr, trf } from "../i18n.js";
 import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
+import { enrichClaudeGrabData } from "../providers/claude-companion.js";
 
 // ── Public types ──────────────────────────────────────────────
 
@@ -130,6 +131,24 @@ export async function sync(
     }
     if (isMain) {
       Object.assign(fsRead.grab_data, await readExtraFiles(oauth.extra_files));
+    }
+
+    if (providerName === "claude") {
+      let companionJson: Record<string, unknown> | undefined;
+      const companionDef = oauth.extra_files?.[0];
+      if (isMain && companionDef) {
+        const companionPath = resolveTemplatePath(companionDef.path);
+        if (await fileExists(companionPath)) {
+          companionJson = await readProviderJsonFile<Record<string, unknown>>(
+            companionPath,
+            companionDef.format,
+          );
+        }
+      }
+      fsRead.grab_data = enrichClaudeGrabData(fsRead.grab_data, fsRawJson, {
+        profileName,
+        companionJson,
+      });
     }
 
     // ── Identity guard ────────────────────────────────────────
