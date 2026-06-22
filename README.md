@@ -1,6 +1,6 @@
 # airev — AI CLI Profile Manager
 
-Мгновенное переключение между учётками Codex, Claude, Gemini, Qwen. Один бинарь, один vault, одна команда.
+Мгновенное переключение между учётками Codex, Claude, Gemini, Grok, Qwen. Один бинарь, один vault, одна команда.
 
 ## TL;DR
 
@@ -9,6 +9,9 @@ airev codex grab work              # захватить текущую сесс�
 airev codex switch personal        # переключиться (Windows Hello / Touch ID)
 airev codex rename work main       # переименовать
 airev codex drop old               # удалить
+
+airev grok grab work               # Grok (xAI) пример
+airev grok switch personal         # переключить профиль grok
 
 airev codex render personal        # создать FS-копию (сателлит) профиля
 airev codex sync work              # синхронизация vault ↔ FS с проверкой freshness и identity
@@ -87,6 +90,7 @@ airev completion fish | source
 | codex (OpenAI) | ✓ | ✓ | 5h + 7d |
 | claude (Anthropic) | ✓ | ✓ | 5h + 7d |
 | gemini (Google) | ✓ | ✓ | — |
+| grok (xAI) | ✓ | ✓ | — |
 | qwen (Alibaba) | ✓ | ✓ | — |
 
 ## Документация
