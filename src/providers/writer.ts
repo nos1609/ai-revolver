@@ -5,6 +5,7 @@ import { pathSegments } from "../core/path.js";
 import { setKeytarPassword } from "./keytar.js";
 import { readProviderJsonFile } from "./json.js";
 import { sanitizeCredentials, mergeCredentials } from "../core/credential-policy.js";
+import { hasDynamicBucket, resolveBucketPath, detectBucketKey } from "./bucket.js";
 
 /** Set a nested value by path, creating intermediate objects. */
 function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
@@ -84,13 +85,41 @@ export async function writeCredentials(
     existing = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
   }
 
+  // Dynamic bucket: use _auth_bucket_key from grab_data (set by reader on prior grab)
+  // to resolve relative mapping/grab paths and to prune sibling buckets.
+  const dyn = hasDynamicBucket(credFile);
+  const prefix = dyn ? credFile.dynamic_bucket_prefix! : undefined;
+  let incomingBucketKey = (data.grab_data && (data.grab_data._auth_bucket_key as string | undefined)) || undefined;
+  let bucketKey = incomingBucketKey;
+  if (dyn && prefix && !bucketKey) {
+    // legacy grab_data without _auth_bucket_key: fallback to detect from disk
+    try {
+      bucketKey = detectBucketKey(existing, prefix);
+    } catch {
+      bucketKey = undefined;
+    }
+  }
+  if (dyn && prefix && !bucketKey) {
+    const paths = [
+      ...Object.values(credFile.mapping || {}),
+      ...(credFile.grab_fields || []),
+    ].filter((p): p is string => typeof p === "string");
+    const anyRelative = paths.some(
+      (p) => !p.startsWith("[") && !p.includes("['") && !p.includes('["'),
+    );
+    if (anyRelative) {
+      throw new Error("re-grab profile: missing _auth_bucket_key");
+    }
+  }
+
   // Extract existing mapped credentials (from the file we just read for preserve_unknown).
   // Then merge with sanitized incoming: sensitive empty values never clobber a live
   // existing value. This is the second defense (writer merge guard) against vault→FS
   // poison and FS→vault empty clobber on grab/sync/switch/usage.
   const existingCreds: Record<string, unknown> = {};
   for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
-    const v = getByPath(existing, jsonPath);
+    const eff = (dyn && bucketKey) ? resolveBucketPath(jsonPath, bucketKey) : jsonPath;
+    const v = getByPath(existing, eff);
     if (v !== undefined) existingCreds[normKey] = v;
   }
   const mergedCreds = mergeCredentials(existingCreds, sanitizeCredentials(data.credentials));
@@ -98,7 +127,8 @@ export async function writeCredentials(
   // Write mapping fields from the *merged* set (not raw incoming).
   for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
     if (normKey in mergedCreds) {
-      setByPath(existing, jsonPath, mergedCreds[normKey]);
+      const eff = (dyn && bucketKey) ? resolveBucketPath(jsonPath, bucketKey) : jsonPath;
+      setByPath(existing, eff, mergedCreds[normKey]);
     }
   }
 
@@ -106,7 +136,17 @@ export async function writeCredentials(
   // grab_fields are pass-through and not subject to the sensitive merge guard in v1.
   for (const fieldPath of credFile.grab_fields) {
     if (fieldPath in data.grab_data) {
-      setByPath(existing, fieldPath, data.grab_data[fieldPath]);
+      const eff = (dyn && bucketKey) ? resolveBucketPath(fieldPath, bucketKey) : fieldPath;
+      setByPath(existing, eff, data.grab_data[fieldPath]);
+    }
+  }
+
+  // Prune other buckets with same prefix (account switch cleanup). Only when dyn + bucketKey known.
+  if (dyn && prefix && bucketKey) {
+    for (const k of Object.keys(existing)) {
+      if (typeof k === "string" && k.startsWith(prefix) && k !== bucketKey) {
+        delete (existing as any)[k];
+      }
     }
   }
 

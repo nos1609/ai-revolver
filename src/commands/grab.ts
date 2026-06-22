@@ -16,6 +16,7 @@ import { getByPath } from "../core/usage.js";
 import { tr, trf } from "../i18n.js";
 import type { AuthType, ProviderDefinition } from "../types/index.js";
 import { mergeCredentials, computeFreshness } from "../core/credential-policy.js";
+import { hasDynamicBucket, detectBucketKey, resolveBucketPath } from "../providers/bucket.js";
 
 export interface GrabOptions {
   apiKey?: string;
@@ -84,11 +85,23 @@ function extractIdentity(
   rawJson: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
   if (!provider.identity) return undefined;
+  const oauth = provider.auth_methods.oauth;
+  const credFile = oauth?.credential_file;
+  const dyn = credFile ? hasDynamicBucket(credFile) : false;
+  let bucketKey: string | undefined;
+  if (dyn && credFile && credFile.dynamic_bucket_prefix) {
+    try {
+      bucketKey = detectBucketKey(rawJson, credFile.dynamic_bucket_prefix);
+    } catch {
+      bucketKey = undefined;
+    }
+  }
   const out: Record<string, unknown> = {};
   for (const field of provider.identity.fields) {
-    const v = getByPath(rawJson, field);
+    const eff = bucketKey ? resolveBucketPath(field, bucketKey) : field;
+    const v = getByPath(rawJson, eff);
     if (v == null) return undefined; // identity неполная → не записываем
-    out[field] = v;
+    out[field] = v; // store under declared (relative for dynamic) name
   }
   return out;
 }

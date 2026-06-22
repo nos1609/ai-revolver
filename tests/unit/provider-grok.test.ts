@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 import { readCredentials } from "../../src/providers/reader.js";
 import { writeCredentials } from "../../src/providers/writer.js";
 import { loadProviderFromString } from "../../src/providers/loader.js";
+import { checkIdentity } from "../../src/core/identity.js";
 
 const tempDirs: string[] = [];
 
@@ -48,9 +49,11 @@ describe("grok provider", () => {
 
     expect(result.credentials.access_token).toBe("sk-grok-access-xyz123");
     expect(result.credentials.refresh_token).toBe("rt-grok-abc456");
-    expect(result.grab_data[BR("user_id")]).toBe("uid-001");
-    expect(result.grab_data[BR("email")]).toBe("grok@x.ai");
-    expect(result.grab_data[BR("team_id")]).toBe("team-grok");
+    // after dynamic: grab_data uses relative keys + injected _auth
+    expect(result.grab_data._auth_bucket_key).toBe(BUCKET);
+    expect(result.grab_data.user_id).toBe("uid-001");
+    expect(result.grab_data.email).toBe("grok@x.ai");
+    expect(result.grab_data.team_id).toBe("team-grok");
   });
 
   it("writer: round-trip write preserves metadata grab_fields", async () => {
@@ -86,11 +89,12 @@ describe("grok provider", () => {
           refresh_token: "new-rt-999",
         },
         grab_data: {
-          [BR("user_id")]: "new-uid",
-          [BR("email")]: "new@x.ai",
-          [BR("team_id")]: "new-team",
-          [BR("principal_id")]: "new-prin",
-          // note: only listed grab_fields present in this grab_data will be written
+          _auth_bucket_key: BUCKET,
+          user_id: "new-uid",
+          email: "new@x.ai",
+          team_id: "new-team",
+          principal_id: "new-prin",
+          // note: relative keys (per yaml with dynamic_bucket_prefix) + _auth_bucket_key
         },
       },
     );
@@ -115,9 +119,195 @@ describe("grok provider", () => {
     expect(prov.version).toBe(1);
     expect(Array.isArray(prov.identity?.fields)).toBe(true);
     expect(prov.identity!.fields.length).toBeGreaterThan(0);
-    expect(prov.identity!.fields[0]).toContain("https://auth.x.ai::b1a00492");
+    expect(prov.identity!.fields[0]).toBe("user_id"); // relative under dynamic_bucket_prefix
     expect(Array.isArray(prov.identity?.display)).toBe(true);
     expect(prov.identity!.display.length).toBeGreaterThan(0);
     expect(prov.identity!.display[0]).toContain("email");
+  });
+
+  it("reader: works with dynamic_bucket_prefix and DIFFERENT bucket UUID (not hardcoded)", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-provider-grok-reader-dyn-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "auth.json");
+    const DYN_BUCKET = "https://auth.x.ai::aaaa-bbbb-cccc";
+    const sample: Record<string, any> = {
+      [DYN_BUCKET]: {
+        key: "sk-dyn-access-999",
+        refresh_token: "rt-dyn-888",
+        user_id: "uid-dyn",
+        email: "dyn@x.ai",
+        team_id: "team-dyn",
+        principal_id: "prin-dyn",
+        auth_mode: "oauth",
+        create_time: "2025-01-01T00:00:00Z",
+      },
+    };
+    await writeFile(file, JSON.stringify(sample, null, 2));
+
+    // direct config with dynamic (simulates what yaml will declare after update)
+    const result = await readCredentials({
+      path: file,
+      format: "json",
+      mapping: {
+        access_token: "key",
+        refresh_token: "refresh_token",
+      },
+      grab_fields: ["user_id", "email", "team_id", "principal_id", "auth_mode", "create_time"],
+      permissions: 0o600,
+      atomic_write: true,
+      preserve_unknown_fields: true,
+      dynamic_bucket_prefix: "https://auth.x.ai::",
+    });
+
+    expect(result.credentials.access_token).toBe("sk-dyn-access-999");
+    expect(result.credentials.refresh_token).toBe("rt-dyn-888");
+    expect(result.grab_data._auth_bucket_key).toBe(DYN_BUCKET);
+    expect(result.grab_data.user_id).toBe("uid-dyn");
+    expect(result.grab_data.email).toBe("dyn@x.ai");
+  });
+
+  it("writer: prunes old bucket key when switching to different _auth_bucket_key", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-provider-grok-prune-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "auth.json");
+    const OLD = "https://auth.x.ai::old-uuid-zzzz";
+    const NEW = "https://auth.x.ai::aaaa-bbbb-cccc";
+    // simulate file left with previous account + current
+    await writeFile(
+      file,
+      JSON.stringify({
+        [OLD]: { key: "old-access", refresh_token: "old-rt", user_id: "old-uid", email: "old@x.ai", extra: 1 },
+        [NEW]: { key: "stale-new", refresh_token: "stale", user_id: "stale-uid" },
+      }),
+    );
+
+    const dynCred = {
+      path: file,
+      format: "json" as const,
+      mapping: { access_token: "key", refresh_token: "refresh_token" },
+      grab_fields: ["user_id", "email", "team_id"],
+      permissions: 0o600,
+      atomic_write: true,
+      preserve_unknown_fields: true,
+      dynamic_bucket_prefix: "https://auth.x.ai::",
+    };
+
+    await writeCredentials(
+      dynCred,
+      {
+        credentials: { access_token: "switched-access-777", refresh_token: "switched-rt-777" },
+        grab_data: {
+          _auth_bucket_key: NEW,
+          user_id: "switched-uid",
+          email: "switched@x.ai",
+          team_id: "switched-team",
+        },
+      },
+    );
+
+    const after = JSON.parse(await readFile(file, "utf-8"));
+    expect(after[NEW]).toBeDefined();
+    expect(after[NEW].key).toBe("switched-access-777");
+    expect(after[NEW].user_id).toBe("switched-uid");
+    expect(after[NEW].email).toBe("switched@x.ai");
+    expect(after[OLD]).toBeUndefined(); // pruned
+    // no other prefix keys
+    const prefixKeys = Object.keys(after).filter((k: string) => k.startsWith("https://auth.x.ai::"));
+    expect(prefixKeys).toEqual([NEW]);
+  });
+
+  it("identity check: passes when vaultIdentity has legacy bracket key and fs has bucket content", async () => {
+    const yamlText = await readFile("providers/grok.yaml", "utf-8");
+    const prov = loadProviderFromString(yamlText);
+
+    const LEGACY_BUCKET = "https://auth.x.ai::legacy-uuid-111";
+    const legacyVaultIdentity: Record<string, unknown> = {
+      [`['${LEGACY_BUCKET}'].user_id`]: "uid-legacy",
+    };
+    const fsRaw: Record<string, unknown> = {
+      [LEGACY_BUCKET]: {
+        key: "sk-legacy",
+        user_id: "uid-legacy",
+        email: "legacy@x.ai",
+      },
+    };
+
+    const check = checkIdentity(prov, legacyVaultIdentity, fsRaw);
+    expect(check.ok).toBe(true);
+  });
+
+  it("reader: readCredentials with 2 buckets + preferredKey from grab_data works", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-grok-read-pref-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "auth.json");
+    const OLD = "https://auth.x.ai::old-multi-aaa";
+    const NEW = "https://auth.x.ai::new-multi-bbb";
+    await writeFile(
+      file,
+      JSON.stringify({
+        [OLD]: { key: "oldk", user_id: "oldu", email: "old@x" },
+        [NEW]: { key: "newk", user_id: "newu", email: "new@x.ai" },
+      }),
+    );
+
+    const dynCred = {
+      path: file,
+      format: "json" as const,
+      mapping: { access_token: "key", refresh_token: "refresh_token" },
+      grab_fields: ["user_id", "email"],
+      permissions: 0o600,
+      atomic_write: true,
+      preserve_unknown_fields: true,
+      dynamic_bucket_prefix: "https://auth.x.ai::",
+    };
+
+    // pass preferred as 4th arg (simulates from grab_data._auth_bucket_key)
+    const result = await readCredentials(dynCred, [], undefined, NEW);
+
+    expect(result.grab_data._auth_bucket_key).toBe(NEW);
+    expect(result.credentials.access_token).toBe("newk");
+    expect(result.grab_data.user_id).toBe("newu");
+  });
+
+  it("writer: writeCredentials with legacy grab_data (no _auth_bucket_key) but existing has bucket succeeds (fallback)", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-grok-write-legacy-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "auth.json");
+    const B = "https://auth.x.ai::fallback-bucket-ccc";
+    await writeFile(
+      file,
+      JSON.stringify({
+        [B]: { key: "old-access", user_id: "old-uid", email: "old@x.ai", extra_unknown: "keep" },
+      }),
+    );
+
+    const dynCred = {
+      path: file,
+      format: "json" as const,
+      mapping: { access_token: "key", refresh_token: "refresh_token" },
+      grab_fields: ["user_id", "email"],
+      permissions: 0o600,
+      atomic_write: true,
+      preserve_unknown_fields: true,
+      dynamic_bucket_prefix: "https://auth.x.ai::",
+    };
+
+    await writeCredentials(dynCred, {
+      credentials: { access_token: "fallback-new-key" },
+      grab_data: {
+        // deliberately no _auth_bucket_key (legacy vault entry)
+        user_id: "fallback-uid",
+        email: "fallback@x.ai",
+      },
+    });
+
+    const after = JSON.parse(await readFile(file, "utf-8"));
+    expect(after[B]).toBeDefined();
+    expect(after[B].key).toBe("fallback-new-key");
+    expect(after[B].user_id).toBe("fallback-uid");
+    expect(after[B].email).toBe("fallback@x.ai");
+    expect(after[B].extra_unknown).toBe("keep");
+    const prefixKeys = Object.keys(after).filter((k: string) => k.startsWith("https://auth.x.ai::"));
+    expect(prefixKeys).toEqual([B]);
   });
 });

@@ -1,5 +1,6 @@
 import type { ProviderDefinition } from "../types/index.js";
 import { getByPath } from "./usage.js";
+import { hasDynamicBucket, detectBucketKey, resolveBucketPath } from "../providers/bucket.js";
 
 // ── Result types ─────────────────────────────────────────────
 
@@ -44,8 +45,20 @@ export function checkIdentity(
   }
 
   for (const field of provider.identity.fields) {
-    const vaultV = vaultIdentity[field];
-    const fsV = getByPath(fsRawJson, field);
+    let vaultV = vaultIdentity[field];
+    if (vaultV == null) {
+      // Legacy vault identity support (pre-dynamic grok): keys could be bracketed
+      // e.g. "['https://auth.x.ai::UUID'].user_id" instead of "user_id"
+      const legacyKey = Object.keys(vaultIdentity).find((k) => {
+        if (typeof k !== "string") return false;
+        if (k.endsWith(`.${field}`) && k.includes("auth.x.ai")) return true;
+        const m = k.match(/\['(https:\/\/auth\.x\.ai::[^']+)'\]\.(.+)$/);
+        return !!m && m[2] === field;
+      });
+      if (legacyKey) vaultV = vaultIdentity[legacyKey];
+    }
+    const effFs = getEffectiveIdentityPath(provider, fsRawJson, field);
+    const fsV = getByPath(fsRawJson, effFs);
 
     if (vaultV == null) {
       return mkErr(provider, "missing-in-vault", vaultIdentity, fsRawJson);
@@ -82,12 +95,20 @@ export function renderIdentityDisplay(
   source: Record<string, unknown>,
 ): string {
   if (!provider.identity) return "";
+  const dynCred = provider.auth_methods?.oauth?.credential_file;
+  const dynPrefix = dynCred && hasDynamicBucket(dynCred) ? dynCred.dynamic_bucket_prefix : undefined;
+  let dynBucket: string | undefined;
+  if (dynPrefix) {
+    try { dynBucket = detectBucketKey(source as any, dynPrefix); } catch { /* ignore, bare lookup will be tried */ }
+  }
   return provider.identity.display
     .map((tpl) =>
       tpl.replace(/\$\{([^}]+)\}/g, (_, expr: string) => {
+        // For dyn bucket on raw source, resolve bare/relative expr
+        const effExpr = (dynBucket && !(expr.startsWith("[") || expr.includes("['"))) ? resolveBucketPath(expr, dynBucket) : expr;
         // Prefixed form: "tokens.x", "credentials.x", "grab_fields.x"
         // Try full path traversal first (nested raw JSON), then flat key (vault identity)
-        const v = getByPath(source, expr) ?? source[expr];
+        const v = getByPath(source, effExpr) ?? (source as any)[expr] ?? (source as any)[effExpr];
         return String(v ?? "?");
       }),
     )
@@ -108,4 +129,19 @@ function mkErr(
     vaultDisplay: renderIdentityDisplay(provider, vaultIdentity),
     fsDisplay: renderIdentityDisplay(provider, fsRawJson),
   };
+}
+
+function getEffectiveIdentityPath(
+  provider: ProviderDefinition,
+  raw: Record<string, unknown>,
+  field: string,
+): string {
+  const cred = provider.auth_methods?.oauth?.credential_file;
+  if (!cred || !hasDynamicBucket(cred) || !cred.dynamic_bucket_prefix) return field;
+  try {
+    const bk = detectBucketKey(raw, cred.dynamic_bucket_prefix);
+    return resolveBucketPath(field, bk);
+  } catch {
+    return field;
+  }
 }

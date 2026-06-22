@@ -1,19 +1,19 @@
-# Grok CLI (xAI) — profile provider for ai-revolver (MVP).
+# Grok CLI (xAI) — profile provider for ai-revolver.
 #
 # Data sources:
-#   - credential file: ~/.grok/auth.json  (plaintext JSON, dynamic top-level bucket key)
+#   - credential file: ~/.grok/auth.json  (plaintext JSON, dynamic top-level bucket key with prefix)
 #   - OAuth refresh:   https://auth.x.ai/oauth2/token  (JSON body)
-#   - usage REST:      unknown public endpoint — no probe in MVP
+#   - usage REST:      unknown public endpoint — no probe
 #
-# MVP limitations:
-#   - Hardcoded OAuth bucket key: `https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828`
-#     (top-level key in auth.json is dynamic per login; bracket path required)
-#   - No `usage:` section (no live rate-limit probe for `airev grok usage`)
-#   - `access_token` stored under `.key` inside the bucket (mapped to normalized field)
-#   - writer uses mapping inverse to put tokens back under `.key`
+# dynamic_bucket_prefix: reader/writer auto-detect the single top-level key
+#   matching the prefix (e.g. https://auth.x.ai::...UUID). grab_data gets
+#   _auth_bucket_key injected. On switch writer writes under that bucket and
+#   prunes other keys with same prefix.
 #
-# Reference impl: codex.yaml / gemini.yaml
-# Bracket path support: tests/unit/provider-reader.test.ts (e.g. ['github.com'])
+# Mapping/grab_fields/identity use relative paths (resolved under detected bucket).
+# No transforms in mapping paths (e.g. no iso_to_ms).
+#
+# Reference: codex.yaml etc. Existing providers without dynamic_bucket_prefix unaffected.
 
 name: grok
 version: 1
@@ -23,17 +23,17 @@ auth_methods:
     credential_file:
       path: "${HOME}/.grok/auth.json"
       format: json
+      dynamic_bucket_prefix: "https://auth.x.ai::"
       mapping:
-        access_token:  "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].key"
-        refresh_token: "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].refresh_token"
-        expires_at:    "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].expires_at | iso_to_ms"
+        access_token: "key"
+        refresh_token: "refresh_token"
       grab_fields:
-        - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].user_id"
-        - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].email"
-        - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].team_id"
-        - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].principal_id"
-        - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].auth_mode"
-        - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].create_time"
+        - "user_id"
+        - "email"
+        - "team_id"
+        - "principal_id"
+        - "auth_mode"
+        - "create_time"
       permissions: 0o600
       atomic_write: true
       preserve_unknown_fields: true
@@ -58,6 +58,6 @@ detection:
 
 identity:
   fields:
-    - "['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].user_id"
+    - "user_id"
   display:
-    - "${['https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828'].email}"
+    - "${email}"

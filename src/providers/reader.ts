@@ -5,6 +5,7 @@ import { getKeytarPassword } from "./keytar.js";
 import { readProviderJsonFile } from "./json.js";
 import { sanitizeCredentials } from "../core/credential-policy.js";
 import fs from "node:fs/promises";
+import { hasDynamicBucket, detectBucketKey, resolveBucketPath } from "./bucket.js";
 
 /** Get a nested value by path: "tokens.access_token" or "['github.com'].oauth_token". */
 function getByPath(obj: Record<string, unknown>, dotPath: string): unknown {
@@ -38,6 +39,7 @@ export async function readCredentials(
   credFile: ProviderCredentialFile,
   credentialSecrets: ProviderCredentialSecret[] = [],
   targetPath?: string,
+  preferredBucketKey?: string,
 ): Promise<ProfileCredentials> {
   const filePath = targetPath ?? resolveTemplatePath(credFile.path);
 
@@ -57,22 +59,34 @@ export async function readCredentials(
 
   const raw = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
 
+  // Dynamic bucket support: detect once, resolve relative paths ("key") to ['<bucket>'].key
+  let bucketKey: string | undefined;
+  if (hasDynamicBucket(credFile)) {
+    bucketKey = detectBucketKey(raw, credFile.dynamic_bucket_prefix!, preferredBucketKey);
+  }
+
   // Extract mapping → credentials (normalised keys)
   const credentials: Record<string, unknown> = {};
   for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
-    const value = getByPath(raw, jsonPath);
+    const effPath = bucketKey ? resolveBucketPath(jsonPath, bucketKey) : jsonPath;
+    const value = getByPath(raw, effPath);
     if (value !== undefined) {
       credentials[normKey] = value;
     }
   }
 
-  // Extract grab_fields → grab_data (original paths as keys)
+  // Extract grab_fields → grab_data (original declared paths as keys; relative when dynamic)
   const grab_data: Record<string, unknown> = {};
   for (const fieldPath of credFile.grab_fields) {
-    const value = getByPath(raw, fieldPath);
+    const effPath = bucketKey ? resolveBucketPath(fieldPath, bucketKey) : fieldPath;
+    const value = getByPath(raw, effPath);
     if (value !== undefined) {
       grab_data[fieldPath] = value;
     }
+  }
+
+  if (bucketKey) {
+    grab_data._auth_bucket_key = bucketKey;
   }
 
   for (const secret of credentialSecrets) {

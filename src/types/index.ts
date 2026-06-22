@@ -34,6 +34,8 @@ export interface ProviderCredentialFile {
   permissions: number;
   atomic_write: boolean;
   preserve_unknown_fields: boolean;
+  /** If set, top-level JSON keys are treated as dynamic buckets; relative paths (no bracket) resolve under the detected bucket. */
+  dynamic_bucket_prefix?: string;
 }
 
 export interface ProviderCredentialSecret {
