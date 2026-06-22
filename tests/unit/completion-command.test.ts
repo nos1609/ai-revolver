@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const providersMock = vi.hoisted(() => ({
-  listProviders: vi.fn(async () => ["claude", "codex", "gemini", "qwen"]),
+  listProviders: vi.fn(async () => ["claude", "codex", "gemini", "qodercli", "qwen"]),
 }));
 
 vi.mock("../../src/providers/loader.js", () => providersMock);

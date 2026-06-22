@@ -1,6 +1,6 @@
 import type { ProviderCredentialFile, ProviderCredentialSecret, ProfileCredentials } from "../types/index.js";
 import { resolveTemplatePath } from "../platform/index.js";
-import { writeJsonFile, fileExists } from "../platform/fs.js";
+import { writeJsonFile, writeBinaryFile, fileExists } from "../platform/fs.js";
 import { pathSegments } from "../core/path.js";
 import { setKeytarPassword } from "./keytar.js";
 import { readProviderJsonFile } from "./json.js";
@@ -55,6 +55,28 @@ export async function writeCredentials(
   targetPath?: string,
 ): Promise<void> {
   const filePath = targetPath ?? resolveTemplatePath(credFile.path);
+
+  // binary-passthrough: write the single mapping field whose path is "."
+  // as raw UTF-8, overwriting any existing file. No merge, no grab_fields,
+  // no keytar. The provider's CLI reads the file verbatim, so ai-revolver
+  // only needs to relay the bytes it grabbed earlier.
+  if (credFile.format === "binary-passthrough") {
+    let blob: string | undefined;
+    for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
+      if (jsonPath === ".") {
+        const v = data.credentials[normKey];
+        if (typeof v === "string") blob = v;
+      }
+    }
+    if (blob === undefined) {
+      throw new Error(
+        `binary-passthrough: credentials missing mapped blob field (expected one of: ${Object.keys(credFile.mapping).join(", ")})`,
+      );
+    }
+    const perms = typeof credFile.permissions === "number" ? credFile.permissions : 0o600;
+    await writeBinaryFile(filePath, blob, perms);
+    return;
+  }
 
   // Read current file (or start empty if first run)
   let existing: Record<string, unknown> = {};

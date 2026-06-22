@@ -119,4 +119,58 @@ describe("provider credential reader", () => {
       ],
     )).rejects.toThrow(/copilot-cli.*https:\/\/github\.com:octo|https:\/\/github\.com:octo.*copilot-cli/);
   });
+
+  it("binary-passthrough: reads file content as a single credential field, no JSON parse", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-provider-reader-binary-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "user");
+    // Not JSON — proves reader does not attempt to parse.
+    const blob = "jr8OM2/T8IRU_base64_looking_opaque_blob+padding==";
+    await writeFile(file, blob);
+
+    const result = await readCredentials({
+      path: file,
+      format: "binary-passthrough",
+      mapping: { user_blob: "." },
+      grab_fields: [],
+      permissions: 0o600,
+      atomic_write: true,
+      preserve_unknown_fields: false,
+    });
+
+    expect(result).toEqual({
+      credentials: { user_blob: blob },
+      grab_data: {},
+    });
+  });
+
+  it("binary-passthrough: skips keytar secrets even if credential_secrets are declared", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-provider-reader-binary-keytar-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "user");
+    await writeFile(file, "opaque-blob");
+
+    const result = await readCredentials(
+      {
+        path: file,
+        format: "binary-passthrough",
+        mapping: { user_blob: "." },
+        grab_fields: [],
+        permissions: 0o600,
+        atomic_write: true,
+        preserve_unknown_fields: false,
+      },
+      [
+        {
+          backend: "keytar",
+          service: "would-fail",
+          account: "missing",
+          mapping: { access_token: "password" },
+        },
+      ],
+    );
+
+    expect(result.credentials).toEqual({ user_blob: "opaque-blob" });
+    expect(keytarMock.getKeytarPassword).not.toHaveBeenCalled();
+  });
 });

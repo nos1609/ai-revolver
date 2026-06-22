@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generateCompletionScript, parseCompletionShell } from "../../src/completion/generate.js";
 
 describe("completion generator", () => {
-  const providers = ["claude", "codex", "gemini", "qwen"];
+  const providers = ["claude", "codex", "gemini", "qodercli", "qwen"];
 
   it("accepts supported shells and rejects unknown shells", () => {
     expect(parseCompletionShell(undefined)).toBe("bash");

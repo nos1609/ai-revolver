@@ -106,4 +106,54 @@ describe("provider credential writer", () => {
     expect("refresh_token" in written.tokens).toBe(false); // never wrote ""
     expect(written.tokens.access_token).toBe("a2");
   });
+
+  it("binary-passthrough: writes blob verbatim, overwriting any existing file", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-writer-binary-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "user");
+    // Existing garbage — must be fully replaced, not merged.
+    await writeFile(file, `{"legacy":"json"}`);
+
+    const blob = "jr8OM2/T8IRU_base64_looking_opaque_blob+padding==";
+    await writeCredentials(
+      {
+        path: file,
+        format: "binary-passthrough",
+        mapping: { user_blob: "." },
+        grab_fields: [],
+        permissions: 0o600,
+        atomic_write: true,
+        preserve_unknown_fields: false,
+      },
+      {
+        credentials: { user_blob: blob },
+        grab_data: {},
+      },
+    );
+
+    const onDisk = await readFile(file, "utf-8");
+    expect(onDisk).toBe(blob);
+  });
+
+  it("binary-passthrough: throws when the mapped blob field is absent from credentials", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "airev-writer-binary-missing-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "user");
+
+    await expect(writeCredentials(
+      {
+        path: file,
+        format: "binary-passthrough",
+        mapping: { user_blob: "." },
+        grab_fields: [],
+        permissions: 0o600,
+        atomic_write: true,
+        preserve_unknown_fields: false,
+      },
+      {
+        credentials: {},
+        grab_data: {},
+      },
+    )).rejects.toThrow(/binary-passthrough/);
+  });
 });

@@ -4,6 +4,7 @@ import { pathSegments } from "../core/path.js";
 import { getKeytarPassword } from "./keytar.js";
 import { readProviderJsonFile } from "./json.js";
 import { sanitizeCredentials } from "../core/credential-policy.js";
+import fs from "node:fs/promises";
 
 /** Get a nested value by path: "tokens.access_token" or "['github.com'].oauth_token". */
 function getByPath(obj: Record<string, unknown>, dotPath: string): unknown {
@@ -39,6 +40,21 @@ export async function readCredentials(
   targetPath?: string,
 ): Promise<ProfileCredentials> {
   const filePath = targetPath ?? resolveTemplatePath(credFile.path);
+
+  // binary-passthrough: file content IS the credential. No JSON parse, no
+  // grab_fields, no keytar. The single mapping entry must use path "."
+  // whose value becomes the whole file content (UTF-8). Used for opaque
+  // credential blobs (qodercli's ~/.qoder/.auth/user) where the on-disk
+  // format is undocumented and ai-revolver only needs to relay it.
+  if (credFile.format === "binary-passthrough") {
+    const content = await fs.readFile(filePath, "utf-8");
+    const credentials: Record<string, unknown> = {};
+    for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
+      if (jsonPath === ".") credentials[normKey] = content;
+    }
+    return { credentials: sanitizeCredentials(credentials), grab_data: {} };
+  }
+
   const raw = await readProviderJsonFile<Record<string, unknown>>(filePath, credFile.format);
 
   // Extract mapping → credentials (normalised keys)

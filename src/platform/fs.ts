@@ -134,6 +134,19 @@ export async function writeJsonFile(filePath: string, data: unknown, permissions
   await atomicWrite(filePath, json, permissions);
 }
 
+/**
+ * Write raw UTF-8 content to a file atomically (tmp → bak → rename).
+ * Used for opaque credential blobs (providers whose CLI reads the file
+ * verbatim and whose on-disk format is not JSON).
+ */
+export async function writeBinaryFile(
+  filePath: string,
+  content: string,
+  permissions?: number,
+): Promise<void> {
+  await atomicWrite(filePath, content, permissions);
+}
+
 export async function fileExists(filePath: string): Promise<boolean> {
   if (await rawExists(filePath)) return true;
   // Auto-recover from .bak if main file is missing

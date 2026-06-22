@@ -1,5 +1,6 @@
 import path from "node:path";
 import { stat } from "node:fs/promises";
+import fs from "node:fs/promises";
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
 import { readExtraFiles } from "../providers/extra-files.js";
@@ -146,8 +147,20 @@ export async function grab(providerName: string, profileName: string, opts: Grab
         ...(source.kind === "native" ? await readExtraFiles(oauthDef.extra_files) : {}),
       };
 
-      // Читаем сырой JSON для извлечения identity (fields — dotted paths в raw JSON)
-      rawJson = await readProviderJsonFile<Record<string, unknown>>(credPath, oauthDef.credential_file.format);
+      // Читаем сырой JSON для извлечения identity (fields — dotted paths в raw JSON).
+      // Для binary-passthrough: JSON парсинг невозможен (opaque blob). Строим
+      // синтетический Record, в котором каждый ключ credentials с путём "."
+      // указывает на сырое содержимое файла — extractIdentity резолвит identity.fields
+      // против этого Record так же, как против распарсенного JSON для json/jsonc.
+      if (oauthDef.credential_file.format === "binary-passthrough") {
+        const content = await fs.readFile(credPath, "utf-8");
+        rawJson = {};
+        for (const [normKey, jsonPath] of Object.entries(oauthDef.credential_file.mapping)) {
+          if (jsonPath === ".") rawJson[normKey] = content;
+        }
+      } else {
+        rawJson = await readProviderJsonFile<Record<string, unknown>>(credPath, oauthDef.credential_file.format);
+      }
 
       console.log(chalk.dim(trf(`  Найдено: {t}-сессия`, `  Found: {t} session`, { t: authType })));
 

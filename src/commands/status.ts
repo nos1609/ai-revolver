@@ -94,10 +94,26 @@ export async function statusJson(providerFilter?: string): Promise<StatusEntry[]
           sync_hint = "no-fs";
         } else if (provider?.auth_methods.oauth) {
           try {
-            const fsRawJson = await readProviderJsonFile<Record<string, unknown>>(
-              fsPath,
-              provider.auth_methods.oauth.credential_file.format,
-            );
+            const oauth = provider.auth_methods.oauth;
+            // binary-passthrough: synthesise rawJson from the read credentials
+            // (no JSON parse of the opaque blob). Other formats read as JSON.
+            let fsRawJson: Record<string, unknown>;
+            if (oauth.credential_file.format === "binary-passthrough") {
+              const fsRead = await readCredentials(
+                oauth.credential_file,
+                oauth.credential_secrets || [],
+                fsPath,
+              );
+              fsRawJson = {};
+              for (const [normKey, jsonPath] of Object.entries(oauth.credential_file.mapping)) {
+                if (jsonPath === ".") fsRawJson[normKey] = fsRead.credentials[normKey];
+              }
+            } else {
+              fsRawJson = await readProviderJsonFile<Record<string, unknown>>(
+                fsPath,
+                oauth.credential_file.format,
+              );
+            }
 
             // Identity check
             const identityCheck = checkIdentity(provider, vaultEntry.identity, fsRawJson);

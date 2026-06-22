@@ -1,0 +1,65 @@
+# Qoder CLI (qodercli) — profile provider for ai-revolver.
+#
+# Data sources:
+#   - credential file: ~/.qoder/.auth/user   (opaque 1048-byte base64 blob,
+#                                             mode 0600, NOT JSON, NOT JWT)
+#   - companion file:  ~/.qoder/.auth/machine_id (installation-bound UUID,
+#                                                 NOT account-bound — do NOT
+#                                                 use as identity)
+#   - env fallback:    QODER_PERSONAL_ACCESS_TOKEN="qoder_..."  (PAT, for CI)
+#   - OAuth refresh:   NOT WIRED — token refresh happens inside qodercli
+#                      itself; we only relay the blob.
+#   - usage REST:      NOT WIRED — qodercli exposes `/usage` only in TUI
+#                      mode; `--print` rejects it. Public REST endpoints
+#                      (`openapi.qoder.sh/api/v{1,2,3}/...`) return 401 for
+#                      the raw blob and need a real access_token the CLI
+#                      derives internally. See
+#                      docs/notes/2026-06-22-qodercli-reverse-engineering.md
+#                      for the full reverse-engineering log.
+#
+# Why opaque blob relay:
+#   The on-disk file is encrypted (verified: API rejects it as Bearer,
+#   base64-decodes to high-entropy bytes, no JWT structure). The CLI
+#   decrypts it in-process using a key we can't extract without reversing
+#   the Bun SEA binary. Verified experimentally:
+#     - rm user  → CLI prints "Not logged in. Run `qodercli login`"
+#     - cp backup back → CLI works again, no re-login required
+#   So grab copies the blob into the vault, switch writes it back verbatim.
+#   That's the whole model.
+
+name: qodercli
+version: 1
+
+auth_methods:
+  oauth:
+    credential_file:
+      path: "${HOME}/.qoder/.auth/user"
+      format: binary-passthrough
+      mapping:
+        user_blob: "."
+      grab_fields: []
+      permissions: 0o600
+      atomic_write: true
+      preserve_unknown_fields: false
+
+  api_key:
+    env:
+      QODER_PERSONAL_ACCESS_TOKEN: "${api_key}"
+
+detection:
+  commands: ["qodercli"]
+  paths: ["${HOME}/.qoder/"]
+
+# No `usage:` — see header comment. Revisit when Qoder publishes either a
+# public usage/credits REST endpoint that accepts the PAT, or documents the
+# blob format so we can extract a usable access_token.
+
+identity:
+  # The blob itself is the per-account discriminator (same blob = same
+  # account). Different accounts produce distinct ciphertexts — verified
+  # by size/content stability across sessions. machine_id is per-install
+  # and NOT usable here.
+  fields:
+    - "user_blob"
+  display:
+    - "${user_blob}"

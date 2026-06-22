@@ -24,7 +24,7 @@ export interface ProfileEntry extends Profile {
 
 // ── Provider YAML schema ─────────────────────────────────
 
-export type ProviderCredentialFileFormat = "json" | "jsonc";
+export type ProviderCredentialFileFormat = "json" | "jsonc" | "binary-passthrough";
 
 export interface ProviderCredentialFile {
   path: string;

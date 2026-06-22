@@ -1,5 +1,6 @@
 import path from "node:path";
 import { stat } from "node:fs/promises";
+import fs from "node:fs/promises";
 import chalk from "chalk";
 import { loadProvider } from "../providers/loader.js";
 import { readExtraFiles, writeExtraFiles } from "../providers/extra-files.js";
@@ -116,9 +117,19 @@ export async function sync(
       );
     }
 
-    // Read FS credentials (normalized) and raw JSON for identity check
+    // Read FS credentials (normalized) and raw JSON for identity check.
+    // binary-passthrough: fsRead.credentials already carries the blob under
+    // the mapping key; synthesise rawJson from it (no JSON parse of the file).
     const fsRead = await readCredentials(oauth.credential_file, oauth.credential_secrets, fsPath);
-    const fsRawJson = await readProviderJsonFile<Record<string, unknown>>(fsPath, oauth.credential_file.format);
+    let fsRawJson: Record<string, unknown>;
+    if (oauth.credential_file.format === "binary-passthrough") {
+      fsRawJson = {};
+      for (const [normKey, jsonPath] of Object.entries(oauth.credential_file.mapping)) {
+        if (jsonPath === ".") fsRawJson[normKey] = fsRead.credentials[normKey];
+      }
+    } else {
+      fsRawJson = await readProviderJsonFile<Record<string, unknown>>(fsPath, oauth.credential_file.format);
+    }
     if (isMain) {
       Object.assign(fsRead.grab_data, await readExtraFiles(oauth.extra_files));
     }
@@ -220,8 +231,18 @@ export async function sync(
         trf(`  ✓ "{n}": FS → vault`, `  ✓ "{n}": FS → vault`, { n: profileName }),
       ));
     } else if (resolution.resolution === "push-vault-to-fs") {
-      // Compare-and-swap: re-read FS to detect concurrent rotation (now with mtime for Claude-like)
-      const fsRawRecheck = await readProviderJsonFile<Record<string, unknown>>(fsPath, oauth.credential_file.format);
+      // Compare-and-swap: re-read FS to detect concurrent rotation (mtime-based for binary-passthrough,
+      // embedded `last_refresh` for json/jsonc providers that carry it).
+      let fsRawRecheck: Record<string, unknown>;
+      if (oauth.credential_file.format === "binary-passthrough") {
+        const content = await fs.readFile(fsPath, "utf-8");
+        fsRawRecheck = {};
+        for (const [normKey, jsonPath] of Object.entries(oauth.credential_file.mapping)) {
+          if (jsonPath === ".") fsRawRecheck[normKey] = content;
+        }
+      } else {
+        fsRawRecheck = await readProviderJsonFile<Record<string, unknown>>(fsPath, oauth.credential_file.format);
+      }
       let recheckMtime = 0;
       try {
         const fsRecheckStat = await stat(fsPath);

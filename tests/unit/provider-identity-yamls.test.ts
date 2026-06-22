@@ -5,7 +5,7 @@ import { loadProviderFromString } from "../../src/providers/loader.js";
 
 // Resolve providers/ relative to repo root (two levels up from tests/unit/)
 const PROVIDERS_DIR = path.resolve(import.meta.dirname, "../../providers");
-const PROVIDERS = ["codex", "claude", "gemini", "qwen", "copilot"];
+const PROVIDERS = ["codex", "claude", "gemini", "qwen", "copilot", "qodercli"];
 
 describe("shipped provider manifests declare identity", () => {
   for (const name of PROVIDERS) {
