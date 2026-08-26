@@ -85,6 +85,9 @@ airev vault path
 
 ## Install from source
 
+For source builds, use npm `12.0.1` pinned in `packageManager` and a compatible
+Node.js version.
+
 From the checkout root:
 
 ```bash

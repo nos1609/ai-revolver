@@ -34,6 +34,7 @@ for (const file of activeMarkdown) {
   const absolute = path.join(root, file);
   if (!existsSync(absolute)) continue;
   const content = readFileSync(absolute, "utf8");
+  const visibleContent = content.replace(/<!--[\s\S]*?-->/g, "");
   let inMermaid = false;
 
   for (const [index, line] of content.split(/\r?\n/).entries()) {
@@ -46,7 +47,7 @@ for (const file of activeMarkdown) {
   }
   if (inMermaid) failures.push(`${file}: unclosed Mermaid fence`);
 
-  for (const match of content.matchAll(linkPattern)) {
+  for (const match of visibleContent.matchAll(linkPattern)) {
     let target = match[1].trim();
     if (target.startsWith("<") && target.endsWith(">")) target = target.slice(1, -1);
     target = target.split(/\s+["']/)[0];

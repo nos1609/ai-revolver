@@ -4,7 +4,8 @@
 
 ## Перед началом
 
-- Используй Node.js `>=18` и npm.
+- Для разработки используй npm `12.0.1` из `packageManager` и совместимую с ним
+  версию Node.js. Пакет в runtime поддерживает Node.js `>=18`.
 - Прочитай [`docs/README.md`](docs/README.md),
   [`docs/security.md`](docs/security.md) и относящийся к изменению provider
   manifest или архитектурный документ.

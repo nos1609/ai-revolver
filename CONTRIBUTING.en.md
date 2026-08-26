@@ -4,7 +4,8 @@
 
 ## Before starting
 
-- Use Node.js `>=18` and npm.
+- For development, use npm `12.0.1` from `packageManager` and a compatible
+  Node.js version. The runtime package supports Node.js `>=18`.
 - Read [`docs/README.md`](docs/README.md),
   [`docs/security.md`](docs/security.md), and the provider manifest or
   architecture document relevant to the change.

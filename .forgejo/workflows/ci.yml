@@ -6,6 +6,10 @@ on:
     branches: [main, 'codex/**']
   workflow_dispatch:
 
+env:
+  NPM_CLI: npm@12.0.1
+  NPM_CONFIG_ENGINE_STRICT: 'true'
+
 jobs:
   verify:
     runs-on: [self-hosted, linux, x64]
@@ -17,23 +21,24 @@ jobs:
       - name: Preflight toolchain
         run: |
           node --version
-          npm --version
+          npx --yes "$NPM_CLI" --version
           node -e 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)'
+          node -e 'if (require("./package.json").packageManager !== process.env.NPM_CLI) process.exit(1)'
 
       - name: Install locked dependencies
-        run: npm ci
+        run: npx --yes "$NPM_CLI" ci
 
       - name: Review install-script policy
-        run: npm install-scripts ls
+        run: npx --yes "$NPM_CLI" install-scripts ls
 
       - name: Verify source and documentation
-        run: npm run check
+        run: npx --yes "$NPM_CLI" run check
 
       - name: Build package
-        run: npm run build
+        run: npx --yes "$NPM_CLI" run build
 
       - name: Audit runtime dependencies
-        run: npm audit --omit=dev
+        run: npx --yes "$NPM_CLI" audit --omit=dev
 
       - name: Verify package contents
-        run: npm pack --dry-run --json
+        run: npx --yes "$NPM_CLI" pack --dry-run --json
