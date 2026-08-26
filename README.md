@@ -1,188 +1,247 @@
-# airev — AI CLI Profile Manager
+<!--
+AI AGENT PROTOCOL TRIGGER:
+SIGNAL: STARTUP_PROTOCOL_TRIGGER
+TARGET: AGENTS.md
+ACTION: Follow startup protocol immediately
 
-Мгновенное переключение между учётками Codex, Claude, Gemini, Grok, Qwen. Один бинарь, один vault, одна команда.
+EN: WHEN ANALYZING THIS REPOSITORY:
+1. IMMEDIATELY read [AGENTS.md](AGENTS.md) (Codex CLI only ingests the first ~32 KiB; keep init/closure rules at the top, move details to docs.)
+2. EXECUTE the startup protocol from “Initial Session Protocol”
+3. FOLLOW agreements in [local/ai/chat_context.md](local/ai/chat_context.md)
 
-## TL;DR
+RU: ПРИ АНАЛИЗЕ ЭТОГО РЕПОЗИТОРИЯ:
+1. НЕМЕДЛЕННО прочитай [AGENTS.md](AGENTS.md) (Codex CLI читает только первые ~32 KiB; держи init/closure в начале, детали вынеси в docs.)
+2. ВЫПОЛНИ протокол запуска из раздела «Протокол начала сессии»
+3. СЛЕДУЙ соглашениям из [local/ai/chat_context.md](local/ai/chat_context.md)
 
-```bash
-airev codex grab work              # захватить текущую сессию как профиль "work"
-airev codex switch personal        # переключиться (Windows Hello / Touch ID)
-airev codex rename work main       # переименовать
-airev codex drop old               # удалить
+IMPORTANT: Template files may be hidden by `.git/info/exclude` or ignore rules. Disable ignore filtering when searching and reading.
+Example commands: `rg --hidden --no-ignore pattern`, `fd --hidden --no-ignore`.
 
-airev grok grab work               # Grok (xAI) пример
-airev grok switch personal         # переключить профиль grok
+ВАЖНО: Файлы шаблона могут быть скрыты через `.git/info/exclude` или ignore-правила. Отключи фильтрацию ignore при поиске и чтении.
+Примеры команд: `rg --hidden --no-ignore pattern`, `fd --hidden --no-ignore`.
 
-airev codex render personal        # создать FS-копию (сателлит) профиля
-airev codex sync work              # синхронизация vault ↔ FS с проверкой freshness и identity
-airev codex evict old              # удалить сателлит (FS-копию)
-airev vault unlock codex work      # разблокировать профиль в vault
+Additionally: Review symlinks [.github/copilot-instructions.md](.github/copilot-instructions.md), [.claude/CLAUDE.md](.claude/CLAUDE.md), [.gemini/GEMINI.md](.gemini/GEMINI.md), [CLAUDE.md](CLAUDE.md), [GEMINI.md](GEMINI.md), and [QWEN.md](QWEN.md). Always use relative paths when recreating them.
 
-airev list                         # все профили (все провайдеры)
-airev status                       # локальный статус (быстро, без сети)
-airev usage                        # live-лимиты 5h / 7d по ВСЕМ oauth-профилям
-airev usage <name>                 # по конкретному профилю (кросс-провайдер)
-airev codex usage                  # все профили одного провайдера
+Дополнительно: Ознакомься с симлинками [.github/copilot-instructions.md](.github/copilot-instructions.md), [.claude/CLAUDE.md](.claude/CLAUDE.md), [.gemini/GEMINI.md](.gemini/GEMINI.md), [CLAUDE.md](CLAUDE.md), [GEMINI.md](GEMINI.md) и [QWEN.md](QWEN.md). При восстановлении симлинков используй относительные пути.
 
-airev env --shell powershell       # env-экспорты для shell-хука
-airev completion powershell        # автодополнение для shell
-airev provider list                # доступные провайдеры
+Ensure temp CLI homes (`tmp/ai/gemini_home`, `tmp/ai/qwen_home`, `tmp/ai/copilot_home`, `tmp/ai/claude_home`, `tmp/ai/cli_tokens`) are absent before launching tools. Document and clean them after user confirmation if they exist.
 
-airev vault path                   # где лежат registry / active / stale / vault
-airev vault status                 # какой backend используется
-airev vault passwd                 # сменить пароль локального vault.enc (если active backend = file)
-airev vault export backup.json     # encrypted export, пароль = транспортный
-airev vault export backup.json --plaintext  # без шифрования (⚠ живые токены в файле)
-airev vault import backup.json     # восстановить; конфликты по name+provider → skip
-airev vault import backup.json --replace --restore-active
-airev vault migrate file --keep-source  # fallback-copy в vault.enc, source оставить
-airev vault migrate file --yes  # copy+verify, удалить keyring; дальше читается vault.enc
-airev vault migrate keyring --yes  # copy+verify, затем удалить source entries
-```
+Перед запуском CLI убедись, что нет временных каталогов (`tmp/ai/gemini_home`, `tmp/ai/qwen_home`, `tmp/ai/copilot_home`, `tmp/ai/claude_home`, `tmp/ai/cli_tokens`). Если они найдены — опиши и очисть после подтверждения пользователя.
+-->
 
-## Что такое
 
-- **Профиль** = именованная учётка CLI-клиента (`codex`, `claude`, …) со своими OAuth-токенами.
-- **Vault** — зашифрованное хранилище, ключ — биометрия ОС (Windows Hello / Touch ID / DBus).
-- **Switch** — мгновенный: подменяет CLI-файл (`~/.codex/auth.json`, `~/.claude/.credentials.json`) атомарно, без перезапуска клиента.
-- **Usage** — читает живые rate-limits напрямую из API провайдера, при 401 сам рефрешит токен (и для неактивных профилей пишет только в vault — не трогая файл активного).
-- **Claude / rotating creds** — для active-профиля `usage` сначала читает системный `~/.claude/.credentials.json`, а если vault-креды признаны мёртвыми, профиль помечается как `stale` и больше не дёргается автоматически, пока его не обновят через `airev claude grab <name>`.
-- **Stale state** — `stale.json` локальный кэш наблюдений, а не часть профиля: он не экспортируется и не импортируется; успешный `grab` снимает stale-флаг.
-- **Транспортный пароль** — пароль export/import-файла. В английской локали это `transfer file password`; он не становится паролем локального `vault.enc`.
-- **Пароль локального vault-а** — пароль только для `vault.enc`; меняется через `vault passwd`, если effective backend сейчас `encrypted-file`. Для OS keyring этот пароль не применяется.
-- **Vault commands** — `vault export/import` основной интерфейс переносимости; `vault migrate <keyring|file>` локально переносит entries между backend-ами через copy → verify → optional delete-source. Если keyring доступен, но пустой, а `vault.enc` существует, обычный CLI читает `vault.enc`; поэтому `migrate file --yes` реально переключает на file-backend, а `--keep-source` остаётся fallback-copy. Старые top-level `export/import` оставлены как совместимые алиасы.
-- **Render / Sync / Evict** — управление сателлитными профилями (локальными FS-копиями). `render` создаёт копию, `evict` удаляет, `sync` выполняет двунаправленную синхронизацию vault ↔ FS с guard'ами: пустой `refresh_token` не затирает живой vault (и наоборот), сравнение по `last_refresh` + mtime файла (для Claude/Gemini, у которых нет поля `last_refresh` в credentials).
-- **Status hints и freshness** — `airev status` теперь дополнительно показывает `fs-degraded` / `vault-degraded` / `both-degraded`, когда refresh_token отсутствует или пустой. Freshness учитывает как явный `last_refresh` (если провайдер его отдаёт), так и mtime credential-файла.
-- **Автодополнение shell** — `airev completion <shell>` печатает скрипт для `bash`, `zsh`, `fish` или `powershell`. Первая версия дополняет команды, провайдеры, действия и флаги, но не имена профилей.
+# ai-revolver
 
-## Автодополнение
+[English version](README.en.md)
 
-PowerShell:
+`ai-revolver` (`airev`) — локальный менеджер профилей для CLI-инструментов с
+AI. Он сохраняет уже созданные OAuth-сессии или API keys в защищённом
+хранилище и атомарно переключает файлы учётных данных исходных CLI.
 
-```powershell
-airev completion powershell | Out-String | Invoke-Expression
-```
+Проект работает с живыми токенами. Перед первым использованием прочитай
+[`docs/security.md`](docs/security.md) и сделай зашифрованный экспорт текущих
+профилей. Проект не связан с OpenAI, Anthropic, Google, GitHub, xAI, Alibaba,
+Qoder или другими поставщиками.
 
-Bash:
+## Что он делает
 
-```bash
-eval "$(airev completion bash)"
-```
+- сохраняет несколько именованных профилей одного поставщика;
+- переключает активную учётную запись без повторного входа в исходный CLI;
+- синхронизирует активный файл и неактивные локальные копии с vault;
+- не перезаписывает профиль при несовпадении identity без явного подтверждения;
+- защищает непустой `refresh_token` от замены пустым значением;
+- показывает локальное состояние без сети и доступные лимиты через `usage`;
+- переносит профили через зашифрованный export/import;
+- создаёт completion для Bash, Zsh, Fish и PowerShell.
 
-Zsh:
+`ai-revolver` не выполняет вход вместо исходного CLI, не обходит MFA и не
+гарантирует стабильность недокументированных форматов поставщиков. Подробные
+границы показаны в [архитектуре](docs/architecture/overview.md).
 
-```zsh
-eval "$(airev completion zsh)"
-```
+## Поддерживаемые платформы
 
-Fish:
+| ОС | Каталог состояния | Основной vault | Резервный vault |
+|---|---|---|---|
+| Windows | `%APPDATA%\ai-revolver` | DPAPI и подтверждение Windows Security, если доступно | `vault.enc` с паролем |
+| Linux | `${XDG_CONFIG_HOME:-~/.config}/ai-revolver` | Secret Service через `secret-tool` | `vault.enc` с паролем |
+| macOS | `~/Library/Application Support/ai-revolver` | Keychain через `security` | `vault.enc` с паролем |
 
-```fish
-airev completion fish | source
-```
+Требуется Node.js `>=18` и npm. На Linux установи пакет, который предоставляет
+`secret-tool`, и запусти Secret Service, если нужен системный keyring. В
+headless-сессии без Secret Service `airev` использует зашифрованный файл.
 
-## Поддерживаемые провайдеры
+Unit contracts покрывают все три платформы. Перед релизом повтори live-проверки
+на Windows, Linux и macOS по порядку из
+[`docs/releasing.md`](docs/releasing.md).
 
-Декларативные yaml-манифесты в `providers/`. На сегодня:
-
-| Провайдер | OAuth | API key | Usage |
-|-----------|:-----:|:-------:|:-----:|
-| codex (OpenAI) | ✓ | ✓ | 5h + 7d |
-| claude (Anthropic) | ✓ | ✓ | 5h + 7d |
-| gemini (Google) | ✓ | ✓ | — |
-| grok (xAI) | ✓ | ✓ | — |
-| qwen (Alibaba) | ✓ | ✓ | — |
-
-## Документация
-
-- **Архитектура и дизайн** → [`plans/05-design-v2.md`](plans/05-design-v2.md)
-- **Провайдер-specific findings** (endpoints, JWT-трюки, подводные камни) → [`docs/findings.md`](docs/findings.md)
-- **Road-map / фазы** → в конце `plans/05-design-v2.md`
-
-## Разработка
+Проверь выбранный вариант:
 
 ```bash
-npm install
-npm test
-npm run build
-npm link                 # ← обязательно после билда
-airev --version          # должен показать версию из этого репозитория
-airev --help
+command -v secret-tool || true
+airev vault status
+airev vault path
 ```
 
-**Важно:** после `npm run build` (или любых изменений в `src/`) нужно заново выполнить `npm link`, иначе в PATH останется старая версия.
+## Установка из исходников
 
-### Локальная dev-установка
-
-`npm link` делает команду `airev` глобальной, но указывающей на текущий workspace:
-
-```bash
-npm link
-which airev       # Linux/macOS
-where.exe airev   # Windows
-airev --version
-```
-
-Если раньше уже делали `npm link`, а потом пересобрали проект — **обязательно выполните `npm link` повторно**.
-
-Без `npm link` (или после установки через `npm install -g`) глобальный `airev` остаётся копией и не видит изменения в `src/`:
-
-- Windows: `%APPDATA%\npm\node_modules\ai-revolver`
-- Linux/macOS: смотри `npm root -g`
-
-### Сборка installable tarball
-
-Для установки на другую машину собирай npm tarball:
+Из корня рабочей копии:
 
 ```bash
 npm ci
-npm test
+npm run check
 npm run build
+npm link
+airev --version
+airev --help
+```
+
+`npm link` выполняется один раз для этой рабочей копии. После `npm run build`
+повторная привязка не нужна: глобальная команда уже указывает на
+`dist/index.js` этой копии.
+
+Проверь, какой исполняемый файл используется:
+
+```bash
+which airev       # Linux/macOS
+where.exe airev   # Windows
+```
+
+## Устанавливаемый архив
+
+Собери npm tarball для другой машины:
+
+```bash
+npm ci
+npm pack --dry-run
 npm pack
 ```
 
-На выходе будет файл вида:
+`prepack` запускает полную проверку и сборку. Результат имеет имя
+`ai-revolver-<version>.tgz`.
 
-```text
-ai-revolver-<version>.tgz
-```
-
-Проверить содержимое без создания архива:
+Установка на Linux или macOS:
 
 ```bash
-npm pack --dry-run
-```
-
-### Установка tarball на Linux
-
-Если tarball собран на другой машине, сначала перенеси его на Linux:
-
-```bash
-scp ai-revolver-<version>.tgz user@linux-host:/tmp/
-```
-
-На Linux:
-
-```bash
-npm install -g /tmp/ai-revolver-<version>.tgz
+npm install -g ./ai-revolver-<version>.tgz
 airev --version
 which airev
 npm root -g
 ```
 
-Если репозиторий уже есть на Linux и нужно собрать прямо там:
+Установка в PowerShell:
 
-```bash
-git pull --ff-only
-npm ci
-npm test
-npm run build
-npm pack
-npm install -g ./ai-revolver-<version>.tgz
+```powershell
+npm install -g .\ai-revolver-<version>.tgz
 airev --version
+where.exe airev
+npm root -g
 ```
 
-### Rollback установки
+Пакет пока нельзя считать опубликованным только по наличию `package.json`.
+Проверяемый порядок публикации описан в
+[`docs/releasing.md`](docs/releasing.md).
+
+## Первый профиль
+
+Сначала войди в исходном CLI, затем сохрани его текущую сессию:
+
+```bash
+airev codex grab work
+airev codex grab personal
+airev codex list
+airev codex switch work
+airev status
+```
+
+`switch` сначала синхронизирует исходящий активный профиль. Если identity или
+freshness не проходят проверку, команда останавливается до записи нового
+файла. Разбери причину через `status` и `sync`; не начинай восстановление с
+`--force`.
+
+Явное направление требуется только для принудительного `sync`:
+
+```bash
+airev codex sync work --dry-run
+airev codex sync work --force --push   # файл CLI -> vault
+airev codex sync work --force --pull   # vault -> файл CLI
+```
+
+Для намеренного обновления существующего профиля из текущего файла:
+
+```bash
+airev codex grab --force work
+```
+
+Флаг можно ставить до или после имени. Неизвестные флаги завершают команду с
+ошибкой и не становятся именем профиля.
+
+Полный жизненный цикл и откат описаны в
+[`docs/operations/profile-lifecycle.md`](docs/operations/profile-lifecycle.md).
+
+## Основные команды
+
+```text
+airev <provider> grab <name>             сохранить текущую сессию
+airev <provider> switch <name>           переключить активный профиль
+airev <provider> render <name>           создать неактивную файловую копию
+airev <provider> sync <name>             синхронизировать vault и файл
+airev <provider> evict <name>            удалить файловую копию
+airev <provider> rename <old> <new>      переименовать профиль
+airev <provider> drop <name>             удалить профиль из registry и vault
+airev list                               показать все профили
+airev status                             показать локальное состояние
+airev usage [<name>]                     запросить доступные лимиты
+airev vault export <file>                создать зашифрованный экспорт
+airev vault import <file>                импортировать профили
+airev vault migrate <keyring|file>       перенести backend через copy/verify
+airev completion <shell>                 создать shell completion
+```
+
+Точные флаги текущей версии показывает `airev <command> --help`.
+
+## Поставщики
+
+| Поставщик | OAuth | API key | Формат локальной интеграции | `usage` |
+|---|:---:|:---:|---|:---:|
+| `claude` | да | да | JSON credentials и companion metadata | да |
+| `codex` | да | да | JSON credentials | да |
+| `copilot` | да | нет | JSONC metadata и внешний keytar secret | да |
+| `gemini` | да | да | JSON credentials и companion metadata | нет |
+| `grok` | да | да | JSON с динамическим auth bucket | нет |
+| `qodercli` | да | да | непрозрачный зашифрованный blob | нет |
+| `qwen` | да | да | JSON credentials | нет |
+
+Манифесты находятся в `providers/`. Они описывают локальные пути, mapping,
+identity, refresh и usage probes. Изменение формата исходного CLI может
+временно нарушить совместимость. Происхождение контрактов указано в
+[`docs/source-attribution.md`](docs/source-attribution.md).
+
+## Completion
+
+```bash
+eval "$(airev completion bash)"       # Bash
+eval "$(airev completion zsh)"        # Zsh
+airev completion fish | source        # Fish
+```
+
+```powershell
+airev completion powershell | Out-String | Invoke-Expression
+```
+
+Первая версия дополняет команды, поставщиков, действия и флаги, но не имена
+профилей.
+
+## Export, восстановление и удаление
+
+Перед миграцией backend или обновлением версии создай зашифрованный экспорт:
+
+```bash
+airev vault export airev-backup.json
+airev vault import airev-backup.json
+```
+
+`--plaintext` создаёт файл с живыми credentials. Не помещай его в Git, логи,
+облачную синхронизацию или issue. Удали его после переноса.
 
 Вернуться на предыдущий tarball:
 
@@ -191,8 +250,49 @@ npm install -g /path/to/previous/ai-revolver-<old-version>.tgz
 airev --version
 ```
 
-Полностью убрать глобальную установку:
+Удалить глобальную установку:
 
 ```bash
 npm uninstall -g ai-revolver
 ```
+
+Откат пакета не откатывает состояние vault. Для состояния используй заранее
+созданный export или переключись на сохранённый профиль.
+
+## Разработка
+
+```bash
+npm ci
+npm run check
+npm run build
+npm pack --dry-run
+git diff --check
+```
+
+Проект проверяет типы native-компилятором TypeScript 7:
+
+```bash
+npm run type-check
+npx tsc --version       # 7.x, native compiler
+npx tsc6 --version      # 6.x, compatibility API
+```
+
+TypeScript 6 остаётся только для JavaScript API, который нужен
+`typescript-eslint`, Stryker и DTS worker в `tsup`. Это ускоряет type-check,
+но не меняет Node.js runtime и скорость переключения профилей.
+
+Правила изменений находятся в [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Документация
+
+- [`docs/README.md`](docs/README.md) — карта действующих и исторических документов;
+- [`docs/architecture/overview.md`](docs/architecture/overview.md) — компоненты и границы;
+- [`docs/operations/profile-lifecycle.md`](docs/operations/profile-lifecycle.md) — рабочий порядок и откат;
+- [`docs/security.md`](docs/security.md) — модель угроз и безопасное использование;
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — диагностика типовых отказов;
+- [`docs/releasing.md`](docs/releasing.md) — сборка и публикация;
+- [`SECURITY.md`](SECURITY.md) — закрытое сообщение об уязвимости.
+
+## Лицензия
+
+[MIT](LICENSE). Торговые марки и сервисы поставщиков принадлежат их владельцам.

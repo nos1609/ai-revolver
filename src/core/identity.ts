@@ -99,7 +99,7 @@ export function renderIdentityDisplay(
   const dynPrefix = dynCred && hasDynamicBucket(dynCred) ? dynCred.dynamic_bucket_prefix : undefined;
   let dynBucket: string | undefined;
   if (dynPrefix) {
-    try { dynBucket = detectBucketKey(source as any, dynPrefix); } catch { /* ignore, bare lookup will be tried */ }
+    try { dynBucket = detectBucketKey(source, dynPrefix); } catch { /* ignore, bare lookup will be tried */ }
   }
   return provider.identity.display
     .map((tpl) =>
@@ -108,7 +108,7 @@ export function renderIdentityDisplay(
         const effExpr = (dynBucket && !(expr.startsWith("[") || expr.includes("['"))) ? resolveBucketPath(expr, dynBucket) : expr;
         // Prefixed form: "tokens.x", "credentials.x", "grab_fields.x"
         // Try full path traversal first (nested raw JSON), then flat key (vault identity)
-        const v = getByPath(source, effExpr) ?? (source as any)[expr] ?? (source as any)[effExpr];
+        const v = getByPath(source, effExpr) ?? source[expr] ?? source[effExpr];
         return String(v ?? "?");
       }),
     )

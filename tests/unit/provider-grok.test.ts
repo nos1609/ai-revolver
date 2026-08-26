@@ -18,7 +18,6 @@ afterEach(async () => {
 });
 
 const BUCKET = "https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828";
-const BR = (p: string) => `['${BUCKET}'].${p}`;
 
 describe("grok provider", () => {
   it("reader: bracket key with :: reads .key as access_token", async () => {

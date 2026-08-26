@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import { checkIdentity } from "../../src/core/identity.js";
 import { loadProviderFromString } from "../../src/providers/loader.js";
 
 // Resolve providers/ relative to repo root (two levels up from tests/unit/)
@@ -21,4 +22,20 @@ describe("shipped provider manifests declare identity", () => {
       }
     });
   }
+
+  it("qodercli identity mismatch does not expose opaque credentials", async () => {
+    const yamlText = await fs.readFile(path.join(PROVIDERS_DIR, "qodercli.yaml"), "utf-8");
+    const provider = loadProviderFromString(yamlText);
+    const vaultBlob = "A".repeat(1048);
+    const fsBlob = "B".repeat(1048);
+
+    const result = checkIdentity(provider, { user_blob: vaultBlob }, { user_blob: fsBlob });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.vaultDisplay).toBe("qodercli opaque credential");
+    expect(result.fsDisplay).toBe("qodercli opaque credential");
+    expect(result.vaultDisplay).not.toContain(vaultBlob);
+    expect(result.fsDisplay).not.toContain(fsBlob);
+  });
 });

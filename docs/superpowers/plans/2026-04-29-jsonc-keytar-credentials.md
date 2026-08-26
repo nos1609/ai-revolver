@@ -481,10 +481,12 @@ Expected: all Vitest files pass.
 Run:
 
 ```powershell
-node dist\index.js copilot grab user@example.com
+node dist\index.js copilot grab profile@example.test
 ```
 
-Expected: command scans `C:\Users\username\.copilot\config.json`, reads keytar account `https://github.com:nos1609`, and either updates/grabs the profile or reports a precise store-secret error. It must not mention `hosts.json`.
+Expected: command scans the current user's `.copilot/config.json`, reads the
+matching keytar account, and either updates/grabs the profile or reports a
+precise store-secret error. It must not mention `hosts.json`.
 
 - [ ] **Step 4: Inspect git state**
 

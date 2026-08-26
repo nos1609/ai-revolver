@@ -2,11 +2,16 @@ node_modules/
 dist/
 tmp/
 reports/
+coverage/
 
 *.log
 *.tmp
 *.bak
+*.tgz
 
 airev-export-*.json
 
+.env
+.env.*
+!.env.example
 local.env

@@ -7,7 +7,10 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   sourcemap: true,
-  dts: true,
+  dts: {
+    // tsup's TypeScript 6 declaration worker still injects deprecated baseUrl.
+    compilerOptions: { ignoreDeprecations: "6.0" },
+  },
   banner: {
     js: "#!/usr/bin/env node",
   },

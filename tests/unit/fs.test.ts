@@ -28,16 +28,14 @@ afterEach(async () => {
 });
 
 describe("platform fs", () => {
-  it("writes json with requested POSIX permissions", async () => {
+  it.skipIf(process.platform === "win32")("writes json with requested POSIX permissions", async () => {
     platformState.platform = "linux";
     const file = path.join(tempRoot, "vault.enc");
 
     await writeJsonFile(file, { ok: true }, 0o600);
 
     const stat = await fs.stat(file);
-    if (process.platform !== "win32") {
-      expect(stat.mode & 0o777).toBe(0o600);
-    }
+    expect(stat.mode & 0o777).toBe(0o600);
     await expect(readJsonFile(file)).resolves.toEqual({ ok: true });
   });
 

@@ -88,8 +88,8 @@ export async function writeCredentials(
   // Dynamic bucket: use _auth_bucket_key from grab_data (set by reader on prior grab)
   // to resolve relative mapping/grab paths and to prune sibling buckets.
   const dyn = hasDynamicBucket(credFile);
-  const prefix = dyn ? credFile.dynamic_bucket_prefix! : undefined;
-  let incomingBucketKey = (data.grab_data && (data.grab_data._auth_bucket_key as string | undefined)) || undefined;
+  const prefix = hasDynamicBucket(credFile) ? credFile.dynamic_bucket_prefix : undefined;
+  const incomingBucketKey = (data.grab_data && (data.grab_data._auth_bucket_key as string | undefined)) || undefined;
   let bucketKey = incomingBucketKey;
   if (dyn && prefix && !bucketKey) {
     // legacy: infer bucket from bracketed grab_data keys e.g. "['https://auth.x.ai::...'].user_id"
@@ -157,7 +157,7 @@ export async function writeCredentials(
   if (dyn && prefix && bucketKey) {
     for (const k of Object.keys(existing)) {
       if (typeof k === "string" && k.startsWith(prefix) && k !== bucketKey) {
-        delete (existing as any)[k];
+        delete existing[k];
       }
     }
   }

@@ -1,7 +1,9 @@
 import type { ProviderCredentialFile } from "../types/index.js";
 
 /** Return true if the credential file declares dynamic bucket prefix. */
-export function hasDynamicBucket(credFile: ProviderCredentialFile): boolean {
+export function hasDynamicBucket(
+  credFile: ProviderCredentialFile,
+): credFile is ProviderCredentialFile & { dynamic_bucket_prefix: string } {
   return typeof credFile.dynamic_bucket_prefix === "string" && credFile.dynamic_bucket_prefix.length > 0;
 }
 
@@ -31,8 +33,10 @@ export function detectBucketKey(
   }
   // >1 without (matching) preferred: prefer the one with non-empty .key if unique
   const withKey = candidates.filter((k) => {
-    const b = (raw as any)[k];
-    return b && typeof b === "object" && typeof (b as any).key === "string" && (b as any).key.length > 0;
+    const b = raw[k];
+    if (b == null || typeof b !== "object") return false;
+    const key = (b as Record<string, unknown>).key;
+    return typeof key === "string" && key.length > 0;
   });
   if (withKey.length === 1) {
     return withKey[0];
@@ -68,7 +72,7 @@ export function getEffectivePath(credFile: ProviderCredentialFile, fieldPath: st
   if (!hasDynamicBucket(credFile)) {
     return fieldPath;
   }
-  const prefix = credFile.dynamic_bucket_prefix!;
+  const prefix = credFile.dynamic_bucket_prefix;
   // To resolve we need the bucketKey; if raw given, detect (no preferred here)
   let bucketKey: string | undefined;
   try {

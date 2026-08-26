@@ -1,0 +1,39 @@
+---
+name: ci
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 20
+    steps:
+      # actions/checkout v4.3.1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Preflight toolchain
+        run: |
+          node --version
+          npm --version
+          node -e 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Review install-script policy
+        run: npm install-scripts ls
+
+      - name: Verify source and documentation
+        run: npm run check
+
+      - name: Build package
+        run: npm run build
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev
+
+      - name: Verify package contents
+        run: npm pack --dry-run --json

@@ -3,16 +3,16 @@ import { parseArgs } from "../../src/cli/args.js";
 
 describe("CLI args parser", () => {
   it("does not treat --force before profile name as the profile name", () => {
-    expect(parseArgs(["codex", "grab", "--force", "ns@onstudy.org"])).toEqual({
-      positionals: ["codex", "grab", "ns@onstudy.org"],
+    expect(parseArgs(["codex", "grab", "--force", "profile@example.test"])).toEqual({
+      positionals: ["codex", "grab", "profile@example.test"],
       options: { "--force": true },
       unknownOptions: [],
     });
   });
 
   it("does not treat --force after profile name as a second positional", () => {
-    expect(parseArgs(["codex", "grab", "ns@onstudy.org", "--force"])).toEqual({
-      positionals: ["codex", "grab", "ns@onstudy.org"],
+    expect(parseArgs(["codex", "grab", "profile@example.test", "--force"])).toEqual({
+      positionals: ["codex", "grab", "profile@example.test"],
       options: { "--force": true },
       unknownOptions: [],
     });

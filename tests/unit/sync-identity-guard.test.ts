@@ -155,15 +155,12 @@ describe("sync identity guard", () => {
       last_refresh: 1_700_000_000_000,
     });
 
-    try {
-      await sync("codex", "side1");
-      expect.fail("должен бросить");
-    } catch (e) {
-      const msg = String(e);
-      // Сообщение должно содержать значения vault (acc_A) и FS (acc_B)
-      expect(msg).toMatch(/acc_A/);
-      expect(msg).toMatch(/acc_B/);
-    }
+    const error = await sync("codex", "side1").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    const msg = String(error);
+    // Сообщение должно содержать значения vault (acc_A) и FS (acc_B)
+    expect(msg).toMatch(/acc_A/);
+    expect(msg).toMatch(/acc_B/);
   });
 
   it("--force --push пропускает identity guard и пишет FS → vault", async () => {

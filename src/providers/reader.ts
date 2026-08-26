@@ -62,7 +62,7 @@ export async function readCredentials(
   // Dynamic bucket support: detect once, resolve relative paths ("key") to ['<bucket>'].key
   let bucketKey: string | undefined;
   if (hasDynamicBucket(credFile)) {
-    bucketKey = detectBucketKey(raw, credFile.dynamic_bucket_prefix!, preferredBucketKey);
+    bucketKey = detectBucketKey(raw, credFile.dynamic_bucket_prefix, preferredBucketKey);
   }
 
   // Extract mapping → credentials (normalised keys)

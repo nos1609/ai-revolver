@@ -25,7 +25,7 @@ Example:
 ```text
 diagnostics:
   duplicate observed account in codex:
-    profiles: info@the-clipse.com, vladskuzn@gmail.com
+    profiles: first@example.test, second@example.test
 ```
 
 The verified account email is not repeated in the diagnostics block; profile aliases are enough to tell the user which entries need attention.

@@ -127,7 +127,7 @@ blob и получает настоящий access_token, который уже 
 | 9  | `curl openapi.qoder.sh/api/v1/userinfo -H "Authorization: Bearer $BLOB"` | 401 TOKEN_INVALID                                          |
 | 10 | `curl api1.qoder.sh/api/v1/userinfo -H "UA: qodercli/1.0.24"`     | 404 notfound                                                       |
 | 11 | `strace -f -e trace=connect qodercli --list-models`               | TLS-коннекты к 8.211.x.x (Alibaba), без plaintext в trассе         |
-| 12 | `grep -r "user@example.com" ~/.qoder`                          | Найден ТОЛЬКО в logs/runs и projects/*.jsonl, нигде в auth-слое    |
+| 12 | `grep -r "account@example.test" ~/.qoder`                        | Найден ТОЛЬКО в logs/runs и projects/*.jsonl, нигде в auth-слое    |
 
 ## 7. Выбранная модель: opaque blob relay
 
@@ -156,7 +156,7 @@ detection:
 
 identity:
   fields: ["user_blob"]              # одинаковый blob = один аккаунт
-  display: ["${user_blob}"]          # см. §9 про утечку в stdout
+  display: ["qodercli opaque credential"]  # blob не выводится в stdout
 ```
 
 ### Поведение
@@ -189,10 +189,9 @@ identity:
 
 ## 9. Известные ограничения / tradeoffs
 
-1. **Identity display светит полный blob в stdout.** При identity mismatch
-   `airev sync` покажет 1048-байт blob в обе стороны (vault/FS). Для
-   mitigation нужно добавить truncation DSL в identity display (`${var:8}`),
-   но это отдельная задача.
+1. **Identity display не различает стороны.** При identity mismatch `airev sync`
+   выводит безопасную постоянную метку вместо blob. Сравнение выполняется по
+   полному значению, но credential material не попадает в stdout.
 2. **Нет token_refresh.** Протухший blob лечится только `qodercli login`.
    Это честное ограничение — у gemini/qwen то же самое.
 3. **Нет usage probe.** `/usage` работает только в TUI, публичного REST нет.

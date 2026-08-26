@@ -62,4 +62,6 @@ identity:
   fields:
     - "user_blob"
   display:
-    - "${user_blob}"
+    # Never print the opaque credential. Equality is still checked on the
+    # complete blob, but diagnostics use this constant non-secret label.
+    - "qodercli opaque credential"
