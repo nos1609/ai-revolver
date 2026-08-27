@@ -120,17 +120,46 @@ airev vault status
 
 Перед миграцией создай encrypted export. Не удаляй source до проверки target.
 
-## Copilot сообщает о missing keytar secret
+## Copilot сообщает о недоступном token store
 
 Copilot хранит metadata в JSONC, а token — во внешнем credential store. Убедись,
-что Copilot CLI вошёл в аккаунт в той же пользовательской сессии. Не создавай
-ручной token fixture и не помещай key в `providers/copilot.yaml`.
+что текущий `copilot` установлен и вошёл в аккаунт в той же пользовательской
+сессии. `airev` использует token-store runtime из этой установки и соблюдает
+её keychain/plaintext policy. Не создавай ручной token fixture.
 
 Повтори provider login, затем:
 
 ```bash
 airev copilot grab <name>
 ```
+
+## `agy` сообщает об identity mismatch
+
+Antigravity не хранит стабильный Google account ID в локальном OAuth-файле.
+`airev` сравнивает необратимый digest refresh token. Повторный вход в тот же
+Google account может заменить token и потребовать явного обновления профиля:
+
+```bash
+airev agy grab --force <name>
+```
+
+Старый профиль provider `gemini` не преобразуй автоматически: Antigravity
+использует другой путь и другую JSON schema. Создай новый профиль `agy` из
+текущего login.
+
+Не прикладывай `antigravity-oauth-token` к issue.
+
+## Qwen сообщает об identity mismatch
+
+Текущий Qwen OAuth-файл не содержит стабильный account ID. `airev` сравнивает
+необратимый digest refresh token. Повторный login или ротация refresh token
+может потребовать явного обновления профиля:
+
+```bash
+airev qwen grab --force <name>
+```
+
+Не прикладывай `oauth_creds.json` к issue.
 
 ## Qoder identity mismatch
 

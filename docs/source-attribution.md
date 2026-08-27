@@ -9,13 +9,13 @@
 
 | Manifest | Источник контракта | Ограничение |
 |---|---|---|
-| `claude.yaml` | Наблюдаемая структура Claude CLI credentials и companion metadata; provider OAuth/usage behavior | Формат и endpoint может измениться без versioned public contract. |
+| `agy.yaml` | Локальная schema-only проверка Google Antigravity CLI `agy 1.1.21` | Файл не содержит account ID; identity ограничена digest экземпляра refresh token. |
+| `claude.yaml` | Локальная schema-only проверка Claude Code `2.1.245`; OAuth identity находится в companion metadata | Формат и endpoint может измениться без versioned public contract. |
 | `codex.yaml` | Локальный credential file Codex CLI и документированный OAuth account flow | Usage windows и refresh behavior зависят от сервиса OpenAI. |
-| `copilot.yaml` | Copilot CLI JSONC config и system credential-store entry | Token не находится в metadata file; нужен keytar-compatible store. |
-| `gemini.yaml` | Gemini CLI OAuth file и companion account metadata | Usage probe отсутствует; provider может менять storage mode. |
+| `copilot.yaml` | Copilot CLI `1.0.75` JSONC config и bundled token-store runtime; [официальный порядок authentication](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli) | Runtime API поставляется вместе с CLI и может измениться в новой версии. |
 | `grok.yaml` | Наблюдаемый Grok CLI dynamic auth bucket и OAuth refresh | Bucket key и endpoint являются compatibility contract этого adapter. |
-| `qodercli.yaml` | Очищенное локальное исследование opaque credential file | Blob не расшифровывается и не используется как Bearer; live usage отсутствует. |
-| `qwen.yaml` | Наблюдаемый Qwen CLI OAuth file | Token refresh и usage endpoint не объявлены. |
+| `qodercli.yaml` | Очищенное локальное исследование opaque credential file; повторная проверка `qodercli 1.1.31` | Blob не расшифровывается и не используется как Bearer; live usage отсутствует. |
+| `qwen.yaml` | [OAuth schema Qwen Code at `a82a11a`](https://github.com/QwenLM/qwen-code/blob/a82a11a0a4d8d4f97796ac9f56d276364dd3bd64/packages/core/src/qwen/qwenOAuth2.ts) | Device/refresh flow не сохраняет account ID; identity ограничена digest экземпляра refresh token. Live CLI на audit-хосте отсутствовал. |
 
 Датированный Qoder report находится в
 [`notes/2026-06-22-qodercli-reverse-engineering.md`](notes/2026-06-22-qodercli-reverse-engineering.md).
@@ -49,6 +49,6 @@ TypeScript 7 используется как native compiler, а TypeScript 6 в
 
 ## Торговые марки
 
-OpenAI, Codex, Anthropic, Claude, Google, Gemini, GitHub, Copilot, xAI, Grok,
-Alibaba, Qwen и Qoder являются именами соответствующих владельцев. Они
+OpenAI, Codex, Anthropic, Claude, Google, Antigravity, GitHub, Copilot, xAI,
+Grok, Alibaba, Qwen и Qoder являются именами соответствующих владельцев. Они
 используются только для описания совместимости.

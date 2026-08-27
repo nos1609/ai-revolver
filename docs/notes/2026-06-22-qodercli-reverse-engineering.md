@@ -6,6 +6,19 @@
 >         публичные docs docs.qoder.com, REST probes на openapi/api1 qoder.sh
 > Итог: **opaque blob relay** — см. `providers/qodercli.yaml`.
 
+## Повторная проверка 2026-08-27
+
+- `qodercli 1.1.31` был авторизован; `status --output json` вернул только
+  account metadata и не изменил credential file.
+- `~/.qoder/.auth/user` сохранил mode `0600`, но размер blob изменился. Поэтому
+  размер нельзя считать частью контракта.
+- Production reader прочитал текущий blob. Synthetic writer/reader round-trip
+  прошёл без записи в live credential.
+- Identity теперь хранит SHA-256 digest blob. Исходный blob и digest не
+  выводятся в diagnostics. Повторный login может потребовать force grab.
+
+Разделы ниже остаются historical evidence для `1.0.24`.
+
 ## 1. File layout (`~/.qoder/`)
 
 ```

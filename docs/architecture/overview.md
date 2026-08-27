@@ -76,9 +76,14 @@ Reader нормализует поля по manifest. Writer сохраняет 
 `last_refresh` используется mtime файла. Перед записью vault в файл выполняется
 повторная проверка freshness, чтобы обнаружить конкурентную ротацию.
 
+Identity resolver читает основной credential file и объявленные companion
+fields. Manifest может нормализовать identity через JWT claim или SHA-256 и
+разрешить пересечение полей для satellite без глобального companion file.
+
 `qodercli` является исключением по формату: его credential хранится как
-непрозрачный blob. Полный blob участвует в сравнении identity, но diagnostics
-выводят только постоянную безопасную метку.
+непрозрачный blob. В identity участвует только digest; diagnostics выводят
+постоянную безопасную метку. Copilot token проходит через bundled token-store
+runtime текущего Copilot CLI, а не через предположение о расположении keytar.
 
 ## Сетевые границы
 

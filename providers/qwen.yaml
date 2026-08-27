@@ -3,7 +3,8 @@
 #
 # Data sources:
 #   - credential file: ~/.qwen/oauth_creds.json  (0600, plaintext JSON)
-#   - OAuth refresh:   endpoint unknown publicly — NOT wired
+#   - OAuth refresh:   current upstream uses a form-encoded token endpoint;
+#                      ai-revolver's declarative JSON refresher cannot use it
 #   - usage REST:      none known — no probe in MVP
 #
 # Quirks vs others:
@@ -12,6 +13,9 @@
 #   • `resource_url` in the file points to the DashScope endpoint the CLI
 #     should use (`portal.qwen.ai`, `dashscope-intl.aliyuncs.com`, etc.).
 #     Carried as grab_field so switch round-trips correctly.
+#   • Current device and refresh flows do not persist a stable account id or
+#     ID token. A refresh-token digest is used as a credential-instance
+#     discriminator and is never shown in diagnostics.
 #   • API-key mode uses OpenAI-compatible interface → `OPENAI_API_KEY`, not a
 #     `QWEN_API_KEY`. `OPENAI_BASE_URL` must be set alongside, otherwise the
 #     key is silently sent to OpenAI's endpoint. Hence `env_extra`.
@@ -28,6 +32,9 @@ auth_methods:
         access_token:  "access_token"
         refresh_token: "refresh_token"
         expires_at:    "expiry_date"
+      required_credentials:
+        - "access_token"
+        - "refresh_token"
       grab_fields:
         - "token_type"
         - "resource_url"
@@ -36,9 +43,8 @@ auth_methods:
       preserve_unknown_fields: true
 
     # token_refresh: NOT WIRED.
-    # Qwen doesn't publish its OAuth refresh endpoint; no usage probe
-    # exists either, so there's no trigger. If we add a probe later,
-    # capture endpoint + client_id by inspecting the Qwen CLI source.
+    # Current Qwen source posts application/x-www-form-urlencoded. The
+    # declarative ai-revolver refresher currently posts JSON only.
 
   api_key:
     env:
@@ -58,6 +64,8 @@ detection:
 
 identity:
   fields:
-    - "lastLoggedInUser.login"
+    - "refresh_token"
+  transforms:
+    refresh_token: "sha256"
   display:
-    - "${lastLoggedInUser.login}"
+    - "Qwen OAuth credential"

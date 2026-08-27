@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NPM_CLI: npm@12.0.1
+  NPM_CONFIG_ENGINE_STRICT: "true"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.2
+          cache: npm
+
+      - name: Verify toolchain
+        run: |
+          node --version
+          npx --yes "$NPM_CLI" --version
+          node -e 'if (require("./package.json").packageManager !== process.env.NPM_CLI) process.exit(1)'
+
+      - name: Install locked dependencies
+        run: npx --yes "$NPM_CLI" ci
+
+      - name: Review install-script policy
+        run: npx --yes "$NPM_CLI" install-scripts ls
+
+      - name: Verify source and documentation
+        run: npx --yes "$NPM_CLI" run check
+
+      - name: Build package
+        run: npx --yes "$NPM_CLI" run build
+
+      - name: Audit runtime dependencies
+        run: npx --yes "$NPM_CLI" audit --omit=dev
+
+      - name: Verify package contents
+        run: npx --yes "$NPM_CLI" pack --dry-run --json

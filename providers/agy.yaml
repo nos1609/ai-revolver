@@ -1,0 +1,48 @@
+# Google Antigravity CLI (`agy`) profile provider for ai-revolver.
+#
+# Observed with agy 1.1.21 on Linux:
+#   - credential file: ~/.gemini/antigravity-cli/antigravity-oauth-token
+#   - auth layout:     { auth_method, token: { access_token, refresh_token,
+#                                             expiry, token_type } }
+#   - expiry:          ISO 8601 string
+#
+# The file has no local Google account id, email, or ID token. The refresh-token
+# digest is therefore used as a credential-instance discriminator. Re-login can
+# replace it for the same Google account; in that case an explicit force grab is
+# required. The raw token is never stored as identity or shown in diagnostics.
+
+name: agy
+version: 1
+
+auth_methods:
+  oauth:
+    credential_file:
+      path: "${HOME}/.gemini/antigravity-cli/antigravity-oauth-token"
+      format: json
+      mapping:
+        access_token:  "token.access_token"
+        refresh_token: "token.refresh_token"
+        expires_at:    "token.expiry"
+      required_credentials:
+        - "access_token"
+        - "refresh_token"
+      grab_fields:
+        - "auth_method"
+        - "token.token_type"
+      permissions: 0o600
+      atomic_write: true
+      preserve_unknown_fields: true
+
+detection:
+  commands: ["agy"]
+  paths: ["${HOME}/.gemini/antigravity-cli/"]
+
+# Antigravity does not expose a documented non-interactive usage endpoint.
+
+identity:
+  fields:
+    - "token.refresh_token"
+  transforms:
+    token.refresh_token: "sha256"
+  display:
+    - "Google Antigravity credential"

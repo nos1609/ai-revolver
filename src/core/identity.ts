@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import type { ProviderDefinition } from "../types/index.js";
 import { getByPath } from "./usage.js";
 import { hasDynamicBucket, detectBucketKey, resolveBucketPath } from "../providers/bucket.js";
+import { pathSegments } from "./path.js";
 
 // ── Result types ─────────────────────────────────────────────
 
@@ -29,7 +31,7 @@ export type IdentityCheck = IdentityCheckOk | IdentityCheckErr;
  *
  * Returns `{ ok: true }` when:
  *   - provider has no identity schema, OR
- *   - every identity field matches between vault and FS.
+ *   - declared identity fields satisfy the provider's match policy.
  *
  * Returns `{ ok: false, reason, vaultDisplay, fsDisplay }` otherwise.
  */
@@ -37,37 +39,46 @@ export function checkIdentity(
   provider: ProviderDefinition,
   vaultIdentity: Record<string, unknown> | undefined,
   fsRawJson: Record<string, unknown>,
+  fsGrabData: Record<string, unknown> = {},
 ): IdentityCheck {
   if (!provider.identity) return { ok: true };
 
+  const fsIdentity = extractIdentityFromRaw(provider, fsRawJson, fsGrabData);
   if (!vaultIdentity) {
-    return mkErr(provider, "missing-in-vault", {}, fsRawJson);
+    return mkErr(provider, "missing-in-vault", {}, fsIdentity ?? {});
   }
 
-  for (const field of provider.identity.fields) {
-    let vaultV = vaultIdentity[field];
-    if (vaultV == null) {
-      // Legacy vault identity support (pre-dynamic grok): keys could be bracketed
-      // e.g. "['https://auth.x.ai::UUID'].user_id" instead of "user_id"
-      const legacyKey = Object.keys(vaultIdentity).find((k) => {
-        if (typeof k !== "string") return false;
-        if (k.endsWith(`.${field}`) && k.includes("auth.x.ai")) return true;
-        const m = k.match(/\['(https:\/\/auth\.x\.ai::[^']+)'\]\.(.+)$/);
-        return !!m && m[2] === field;
-      });
-      if (legacyKey) vaultV = vaultIdentity[legacyKey];
-    }
-    const effFs = getEffectiveIdentityPath(provider, fsRawJson, field);
-    const fsV = getByPath(fsRawJson, effFs);
+  if (!fsIdentity) {
+    return mkErr(provider, "missing-in-fs", vaultIdentity, {});
+  }
 
-    if (vaultV == null) {
-      return mkErr(provider, "missing-in-vault", vaultIdentity, fsRawJson);
+  const normalizedVault = normalizeVaultIdentity(provider, vaultIdentity);
+  const fields = provider.identity.fields;
+
+  if (provider.identity.match === "overlap") {
+    const common = fields.filter(
+      (field) => normalizedVault[field] != null && fsIdentity[field] != null,
+    );
+    if (common.length === 0) {
+      return mkErr(provider, "missing-in-fs", normalizedVault, fsIdentity);
     }
-    if (fsV == null) {
-      return mkErr(provider, "missing-in-fs", vaultIdentity, fsRawJson);
+    for (const field of common) {
+      if (String(normalizedVault[field]) !== String(fsIdentity[field])) {
+        return mkErr(provider, "mismatch", normalizedVault, fsIdentity);
+      }
     }
-    if (String(vaultV) !== String(fsV)) {
-      return mkErr(provider, "mismatch", vaultIdentity, fsRawJson);
+    return { ok: true };
+  }
+
+  for (const field of fields) {
+    if (normalizedVault[field] == null) {
+      return mkErr(provider, "missing-in-vault", normalizedVault, fsIdentity);
+    }
+    if (fsIdentity[field] == null) {
+      return mkErr(provider, "missing-in-fs", normalizedVault, fsIdentity);
+    }
+    if (String(normalizedVault[field]) !== String(fsIdentity[field])) {
+      return mkErr(provider, "mismatch", normalizedVault, fsIdentity);
     }
   }
 
@@ -148,33 +159,142 @@ function getEffectiveIdentityPath(
 
 // ── Identity extraction (DRY) ────────────────────────────────
 
+function getIdentityValue(
+  provider: ProviderDefinition,
+  rawJson: Record<string, unknown>,
+  grabData: Record<string, unknown>,
+  field: string,
+): unknown {
+  const effectivePath = getEffectiveIdentityPath(provider, rawJson, field);
+  return (
+    getByPath(rawJson, effectivePath)
+    ?? getByPath(grabData, field)
+    ?? grabData[field]
+  );
+}
+
+function applyIdentityTransform(
+  transform: string | undefined,
+  value: unknown,
+): unknown {
+  if (!transform) return value;
+  if (transform === "sha256") {
+    const digest = createHash("sha256").update(String(value), "utf8").digest("hex");
+    return `sha256:${digest}`;
+  }
+  if (transform.startsWith("jwt_claim:")) {
+    if (typeof value !== "string") return undefined;
+    const claim = transform.slice("jwt_claim:".length);
+    const parts = value.split(".");
+    if (parts.length !== 3) return undefined;
+    try {
+      const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
+      if (payload == null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+      return getByPath(payload, claim);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function normalizeVaultIdentity(
+  provider: ProviderDefinition,
+  vaultIdentity: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const field of provider.identity?.fields ?? []) {
+    let value = vaultIdentity[field];
+    if (value == null) {
+      // Legacy vault identity support (pre-dynamic Grok).
+      const legacyKey = Object.keys(vaultIdentity).find((key) => {
+        if (key.endsWith(`.${field}`) && key.includes("auth.x.ai")) return true;
+        const match = key.match(/\['(https:\/\/auth\.x\.ai::[^']+)'\]\.(.+)$/);
+        return !!match && match[2] === field;
+      });
+      if (legacyKey) value = vaultIdentity[legacyKey];
+    }
+    if (value == null) continue;
+
+    const transform = provider.identity?.transforms?.[field];
+    if (transform === "sha256" && typeof value === "string" && /^sha256:[a-f0-9]{64}$/i.test(value)) {
+      out[field] = value.toLowerCase();
+      continue;
+    }
+    if (transform?.startsWith("jwt_claim:") && typeof value === "string" && value.split(".").length !== 3) {
+      out[field] = value;
+      continue;
+    }
+    out[field] = applyIdentityTransform(transform, value);
+  }
+  return out;
+}
+
+function setByPath(obj: Record<string, unknown>, dotPath: string, value: unknown): void {
+  const segments = pathSegments(dotPath);
+  if (segments.length === 0) return;
+  let current = obj;
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index];
+    if (current[segment] == null || typeof current[segment] !== "object") {
+      current[segment] = {};
+    }
+    current = current[segment] as Record<string, unknown>;
+  }
+  current[segments[segments.length - 1]] = value;
+}
+
 /**
  * Extract identity snapshot for vault from raw credential JSON.
  * Resolves dynamic bucket if declared; stores values under bare field names.
- * Returns undefined if any declared identity field is missing (incomplete).
+ * With the default `all` policy, every field is required. `overlap` stores all
+ * available fields and lets native and satellite locations share a subset.
  */
 export function extractIdentityFromRaw(
   provider: ProviderDefinition,
   rawJson: Record<string, unknown>,
+  grabData: Record<string, unknown> = {},
 ): Record<string, unknown> | undefined {
   if (!provider.identity) return undefined;
-  const oauth = provider.auth_methods.oauth;
-  const credFile = oauth?.credential_file;
-  const dyn = credFile ? hasDynamicBucket(credFile) : false;
-  let bucketKey: string | undefined;
-  if (dyn && credFile && credFile.dynamic_bucket_prefix) {
-    try {
-      bucketKey = detectBucketKey(rawJson, credFile.dynamic_bucket_prefix);
-    } catch {
-      bucketKey = undefined;
-    }
-  }
   const out: Record<string, unknown> = {};
   for (const field of provider.identity.fields) {
-    const eff = bucketKey ? resolveBucketPath(field, bucketKey) : field;
-    const v = getByPath(rawJson, eff);
-    if (v == null) return undefined;
-    out[field] = v;
+    const value = getIdentityValue(provider, rawJson, grabData, field);
+    const normalized = value == null
+      ? undefined
+      : applyIdentityTransform(provider.identity.transforms?.[field], value);
+    if (normalized == null) {
+      if (provider.identity.match !== "overlap") return undefined;
+      continue;
+    }
+    out[field] = normalized;
   }
-  return out;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Rebuild a provider-shaped identity source from normalized vault data. */
+export function extractIdentityFromProfile(
+  provider: ProviderDefinition,
+  credentials: Record<string, unknown>,
+  grabData: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const credFile = provider.auth_methods.oauth?.credential_file;
+  if (!credFile) return undefined;
+
+  const rawJson: Record<string, unknown> = {};
+  const bucketKey = typeof grabData._auth_bucket_key === "string"
+    ? grabData._auth_bucket_key
+    : undefined;
+  for (const [normalizedKey, declaredPath] of Object.entries(credFile.mapping)) {
+    const value = credentials[normalizedKey];
+    if (value == null) continue;
+    if (declaredPath === ".") {
+      rawJson[normalizedKey] = value;
+      continue;
+    }
+    const effectivePath = bucketKey && hasDynamicBucket(credFile)
+      ? resolveBucketPath(declaredPath, bucketKey)
+      : declaredPath;
+    setByPath(rawJson, effectivePath, value);
+  }
+  return extractIdentityFromRaw(provider, rawJson, grabData);
 }

@@ -218,7 +218,7 @@ describe("sync freshness merge", () => {
     const MTIME = 1_700_000_005_000;
     fsPromisesMocks.stat.mockResolvedValue({ mtimeMs: MTIME } as any);
 
-    // нет last_refresh ни в grab_data, ни в raw — типичный Claude/Gemini
+    // нет last_refresh ни в grab_data, ни в raw — типичный Claude/agy
     vaultMocks.get.mockResolvedValue(makeVaultEntry(TS_BASE));
     readerMocks.readCredentials.mockResolvedValue({
       credentials: { access_token: "tok_a", account_id: "acc_A" },

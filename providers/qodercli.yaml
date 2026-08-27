@@ -1,7 +1,7 @@
 # Qoder CLI (qodercli) — profile provider for ai-revolver.
 #
 # Data sources:
-#   - credential file: ~/.qoder/.auth/user   (opaque 1048-byte base64 blob,
+#   - credential file: ~/.qoder/.auth/user   (opaque variable-size base64 blob,
 #                                             mode 0600, NOT JSON, NOT JWT)
 #   - companion file:  ~/.qoder/.auth/machine_id (installation-bound UUID,
 #                                                 NOT account-bound — do NOT
@@ -37,6 +37,8 @@ auth_methods:
       format: binary-passthrough
       mapping:
         user_blob: "."
+      required_credentials:
+        - "user_blob"
       grab_fields: []
       permissions: 0o600
       atomic_write: true
@@ -55,13 +57,14 @@ detection:
 # blob format so we can extract a usable access_token.
 
 identity:
-  # The blob itself is the per-account discriminator (same blob = same
-  # account). Different accounts produce distinct ciphertexts — verified
-  # by size/content stability across sessions. machine_id is per-install
-  # and NOT usable here.
+  # The blob digest is a credential-instance discriminator. qodercli status
+  # exposes account metadata only online and only for the native location, so
+  # it cannot protect offline satellites. machine_id is per-install and is not
+  # account identity. Re-login may require an explicit force grab.
   fields:
     - "user_blob"
+  transforms:
+    user_blob: "sha256"
   display:
-    # Never print the opaque credential. Equality is still checked on the
-    # complete blob, but diagnostics use this constant non-secret label.
+    # Never print the opaque credential or its digest in diagnostics.
     - "qodercli opaque credential"

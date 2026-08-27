@@ -30,6 +30,8 @@ export interface ProviderCredentialFile {
   path: string;
   format: ProviderCredentialFileFormat;
   mapping: Record<string, string>;
+  /** Normalized credential keys that must exist before a read or write succeeds. */
+  required_credentials?: string[];
   grab_fields: string[];
   permissions: number;
   atomic_write: boolean;
@@ -38,7 +40,7 @@ export interface ProviderCredentialFile {
   dynamic_bucket_prefix?: string;
 }
 
-export interface ProviderCredentialSecret {
+export interface ProviderKeytarCredentialSecret {
   backend: "keytar";
   service: string;
   /** Template may reference `${grab_data.path}` and `${credentials.field}`. */
@@ -46,6 +48,19 @@ export interface ProviderCredentialSecret {
   /** Normalized credential key -> secret source. Only `password` is supported for keytar. */
   mapping: Record<string, "password">;
 }
+
+export interface ProviderCopilotTokenStoreSecret {
+  backend: "copilot-token-store";
+  /** Templates may reference `${grab_data.path}` and `${credentials.field}`. */
+  host: string;
+  login: string;
+  /** Normalized credential key -> Copilot token-store value. */
+  mapping: Record<string, "token">;
+}
+
+export type ProviderCredentialSecret =
+  | ProviderKeytarCredentialSecret
+  | ProviderCopilotTokenStoreSecret;
 
 export interface ProviderExtraFile {
   path: string;
@@ -87,6 +102,13 @@ export interface ProviderIdentity {
   /** Credential paths (dotted) whose values define logical identity.
    *  e.g. ["tokens.account_id"] */
   fields: string[];
+  /** Optional one-way normalization applied before identity values enter the vault. */
+  transforms?: Record<string, "sha256" | `jwt_claim:${string}`>;
+  /**
+   * `all` requires every field. `overlap` compares every field available on
+   * both sides and succeeds when at least one field is shared.
+   */
+  match?: "all" | "overlap";
   /** Human-readable expressions for identity-mismatch error messages.
    *  May reference `${grab_fields.x}`, `${credentials.x}`, `${tokens.x}`. */
   display: string[];

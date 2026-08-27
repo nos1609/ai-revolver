@@ -6,7 +6,7 @@ import { loadProviderFromString } from "../../src/providers/loader.js";
 
 // Resolve providers/ relative to repo root (two levels up from tests/unit/)
 const PROVIDERS_DIR = path.resolve(import.meta.dirname, "../../providers");
-const PROVIDERS = ["codex", "claude", "gemini", "grok", "qwen", "copilot", "qodercli"];
+const PROVIDERS = ["agy", "codex", "claude", "grok", "qwen", "copilot", "qodercli"];
 
 describe("shipped provider manifests declare identity", () => {
   for (const name of PROVIDERS) {
@@ -26,8 +26,8 @@ describe("shipped provider manifests declare identity", () => {
   it("qodercli identity mismatch does not expose opaque credentials", async () => {
     const yamlText = await fs.readFile(path.join(PROVIDERS_DIR, "qodercli.yaml"), "utf-8");
     const provider = loadProviderFromString(yamlText);
-    const vaultBlob = "A".repeat(1048);
-    const fsBlob = "B".repeat(1048);
+    const vaultBlob = "A".repeat(1068);
+    const fsBlob = "B".repeat(1068);
 
     const result = checkIdentity(provider, { user_blob: vaultBlob }, { user_blob: fsBlob });
 
@@ -37,5 +37,19 @@ describe("shipped provider manifests declare identity", () => {
     expect(result.fsDisplay).toBe("qodercli opaque credential");
     expect(result.vaultDisplay).not.toContain(vaultBlob);
     expect(result.fsDisplay).not.toContain(fsBlob);
+    expect(provider.auth_methods.oauth?.credential_file.required_credentials).toEqual(["user_blob"]);
+  });
+
+  it("qwen requires a complete token pair and hashes refresh identity", async () => {
+    const yamlText = await fs.readFile(path.join(PROVIDERS_DIR, "qwen.yaml"), "utf-8");
+    const provider = loadProviderFromString(yamlText);
+
+    expect(provider.auth_methods.oauth?.credential_file.mapping.id_token).toBeUndefined();
+    expect(provider.auth_methods.oauth?.credential_file.required_credentials).toEqual([
+      "access_token",
+      "refresh_token",
+    ]);
+    expect(provider.identity?.fields).toEqual(["refresh_token"]);
+    expect(provider.identity?.transforms).toEqual({ refresh_token: "sha256" });
   });
 });

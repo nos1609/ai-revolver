@@ -30,6 +30,40 @@ function validateIdentity(def: ProviderDefinition): void {
     }
   }
 
+  if (id.match !== undefined && id.match !== "all" && id.match !== "overlap") {
+    throw new Error(
+      `Provider "${def.name}": identity.match must be "all" or "overlap"`,
+    );
+  }
+
+  if (id.transforms !== undefined) {
+    if (typeof id.transforms !== "object" || Array.isArray(id.transforms)) {
+      throw new Error(`Provider "${def.name}": identity.transforms must be an object`);
+    }
+    for (const [field, transform] of Object.entries(id.transforms)) {
+      if (!id.fields.includes(field)) {
+        throw new Error(
+          `Provider "${def.name}": identity.transforms contains undeclared field "${field}"`,
+        );
+      }
+      if (typeof transform !== "string") {
+        throw new Error(
+          `Provider "${def.name}": identity transform for "${field}" must be a string`,
+        );
+      }
+      if (transform !== "sha256" && !transform.startsWith("jwt_claim:")) {
+        throw new Error(
+          `Provider "${def.name}": unsupported identity transform "${transform}"`,
+        );
+      }
+      if (transform.startsWith("jwt_claim:") && transform.slice("jwt_claim:".length).trim() === "") {
+        throw new Error(
+          `Provider "${def.name}": jwt_claim identity transform requires a claim name`,
+        );
+      }
+    }
+  }
+
   if (!Array.isArray(id.display) || id.display.length === 0) {
     throw new Error(
       `Provider "${def.name}": identity.display must be a non-empty array of strings`,
@@ -44,6 +78,28 @@ function validateIdentity(def: ProviderDefinition): void {
   }
 }
 
+function validateCredentialContract(def: ProviderDefinition): void {
+  const credentialFile = def.auth_methods?.oauth?.credential_file;
+  if (!credentialFile?.required_credentials) return;
+  if (!Array.isArray(credentialFile.required_credentials)) {
+    throw new Error(
+      `Provider "${def.name}": credential_file.required_credentials must be an array`,
+    );
+  }
+  for (const key of credentialFile.required_credentials) {
+    if (typeof key !== "string" || key.trim() === "") {
+      throw new Error(
+        `Provider "${def.name}": required credential names must be non-empty strings`,
+      );
+    }
+    if (!(key in credentialFile.mapping)) {
+      throw new Error(
+        `Provider "${def.name}": required credential "${key}" is not declared in mapping`,
+      );
+    }
+  }
+}
+
 /**
  * Parse a provider definition from a raw YAML string and validate the optional
  * `identity` block. Throws on malformed identity fields.
@@ -52,6 +108,7 @@ function validateIdentity(def: ProviderDefinition): void {
 export function loadProviderFromString(yamlText: string): ProviderDefinition {
   const def = parseYaml(yamlText) as ProviderDefinition;
   validateIdentity(def);
+  validateCredentialContract(def);
   return def;
 }
 
@@ -77,6 +134,7 @@ export async function loadProvider(name: string): Promise<ProviderDefinition> {
       const raw = await fs.readFile(yamlPath, "utf-8");
       const def = parseYaml(raw) as ProviderDefinition;
       validateIdentity(def);
+      validateCredentialContract(def);
       return def;
     }
   }

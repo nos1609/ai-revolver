@@ -204,10 +204,10 @@ Run `airev <command> --help` for the exact options in the installed version.
 
 | Provider | OAuth | API key | Local integration | `usage` |
 |---|:---:|:---:|---|:---:|
+| `agy` | yes | no | Google Antigravity OAuth JSON | no |
 | `claude` | yes | yes | JSON credentials and companion metadata | yes |
 | `codex` | yes | yes | JSON credentials | yes |
-| `copilot` | yes | no | JSONC metadata and an external keytar secret | yes |
-| `gemini` | yes | yes | JSON credentials and companion metadata | no |
+| `copilot` | yes | yes | JSONC metadata and the current CLI token store | yes |
 | `grok` | yes | yes | JSON with a dynamic auth bucket | no |
 | `qodercli` | yes | yes | opaque encrypted blob | no |
 | `qwen` | yes | yes | JSON credentials | no |

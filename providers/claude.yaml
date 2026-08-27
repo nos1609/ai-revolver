@@ -23,7 +23,6 @@ auth_methods:
         - "claudeAiOauth.scopes"
         - "claudeAiOauth.subscriptionType"
         - "claudeAiOauth.rateLimitTier"
-        - "organizationUuid"
       permissions: 0o600
       atomic_write: true
       preserve_unknown_fields: true
@@ -93,7 +92,15 @@ usage:
         secondary.resets_at:    "seven_day.resets_at | iso_to_ms"
 
 identity:
+  # Claude 2.1.245 moved the account identity to ~/.claude.json.oauthAccount.
+  # Satellites do not carry that global companion file, so the refresh-token
+  # digest is a credential-instance fallback. The raw token never enters the
+  # identity snapshot or diagnostics.
   fields:
-    - "organizationUuid"
+    - "oauthAccount.organizationUuid"
+    - "claudeAiOauth.refreshToken"
+  transforms:
+    claudeAiOauth.refreshToken: "sha256"
+  match: overlap
   display:
-    - "${organizationUuid}"
+    - "${oauthAccount.organizationUuid}"

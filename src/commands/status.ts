@@ -4,9 +4,10 @@ import chalk from "chalk";
 import { listProfiles, getAllActive, getProfileById, isActiveMain } from "../core/registry.js";
 import { listProviders, loadProvider } from "../providers/loader.js";
 import { readProviderJsonFile } from "../providers/json.js";
+import { readExtraFiles } from "../providers/extra-files.js";
 import { openVault } from "../vault/factory.js";
 import { satelliteCredentialPath } from "../core/satellite.js";
-import { checkIdentity } from "../core/identity.js";
+import { checkIdentity, extractIdentityFromProfile } from "../core/identity.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 import { tr, trf } from "../i18n.js";
@@ -64,10 +65,17 @@ export async function statusJson(providerFilter?: string): Promise<StatusEntry[]
     for (const profile of provProfiles) {
       const vaultEntry = await vault.get(profile.id);
       const in_vault = vaultEntry !== null;
+      const derivedVaultIdentity = provider && vaultEntry
+        ? extractIdentityFromProfile(provider, vaultEntry.credentials, vaultEntry.grab_data)
+        : undefined;
+      const effectiveVaultIdentity = derivedVaultIdentity || vaultEntry?.identity
+        ? { ...derivedVaultIdentity, ...vaultEntry?.identity }
+        : undefined;
 
       // Determine FS render location
       let render: RenderLocation = "none";
       let fsPath: string | undefined;
+      let isMain = false;
 
       if (provider?.auth_methods.oauth) {
         const nativePath = resolveTemplatePath(provider.auth_methods.oauth.credential_file.path);
@@ -76,7 +84,7 @@ export async function statusJson(providerFilter?: string): Promise<StatusEntry[]
           profile.name,
           path.basename(nativePath),
         );
-        const isMain = await isActiveMain(provName, profile.name);
+        isMain = await isActiveMain(provName, profile.name);
 
         if (isMain) {
           render = "native";
@@ -98,6 +106,7 @@ export async function statusJson(providerFilter?: string): Promise<StatusEntry[]
             // binary-passthrough: synthesise rawJson from the read credentials
             // (no JSON parse of the opaque blob). Other formats read as JSON.
             let fsRawJson: Record<string, unknown>;
+            let fsGrabData: Record<string, unknown> = {};
             if (oauth.credential_file.format === "binary-passthrough") {
               const fsRead = await readCredentials(
                 oauth.credential_file,
@@ -108,15 +117,27 @@ export async function statusJson(providerFilter?: string): Promise<StatusEntry[]
               for (const [normKey, jsonPath] of Object.entries(oauth.credential_file.mapping)) {
                 if (jsonPath === ".") fsRawJson[normKey] = fsRead.credentials[normKey];
               }
+              fsGrabData = fsRead.grab_data;
             } else {
               fsRawJson = await readProviderJsonFile<Record<string, unknown>>(
                 fsPath,
                 oauth.credential_file.format,
               );
             }
+            if (isMain) {
+              fsGrabData = {
+                ...fsGrabData,
+                ...await readExtraFiles(oauth.extra_files),
+              };
+            }
 
             // Identity check
-            const identityCheck = checkIdentity(provider, vaultEntry.identity, fsRawJson);
+            const identityCheck = checkIdentity(
+              provider,
+              effectiveVaultIdentity,
+              fsRawJson,
+              fsGrabData,
+            );
             if (!identityCheck.ok) {
               sync_hint = identityCheck.reason === "missing-in-vault"
                 ? "missing-identity"
@@ -207,7 +228,7 @@ export async function statusJson(providerFilter?: string): Promise<StatusEntry[]
         name: profile.name,
         in_vault,
         render,
-        identity: vaultEntry?.identity,
+        identity: effectiveVaultIdentity,
         last_refresh: vaultEntry?.last_refresh,
         sync_hint,
       });

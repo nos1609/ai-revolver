@@ -2,6 +2,7 @@ import type { ProviderCredentialFile, ProviderCredentialSecret, ProfileCredentia
 import { resolveTemplatePath } from "../platform/index.js";
 import { pathSegments } from "../core/path.js";
 import { getKeytarPassword } from "./keytar.js";
+import { getCopilotToken } from "./copilot-token-store.js";
 import { readProviderJsonFile } from "./json.js";
 import { sanitizeCredentials } from "../core/credential-policy.js";
 import fs from "node:fs/promises";
@@ -26,6 +27,18 @@ function interpolateSecretTemplate(
     const source = scope === "credentials" ? credentials : grabData;
     return String(source[key] ?? "");
   });
+}
+
+function assertRequiredCredentials(
+  credFile: ProviderCredentialFile,
+  credentials: Record<string, unknown>,
+): void {
+  for (const key of credFile.required_credentials ?? []) {
+    const value = credentials[key];
+    if (value == null || (typeof value === "string" && value.trim() === "")) {
+      throw new Error(`Credential file is missing required mapped field: ${key}`);
+    }
+  }
 }
 
 /**
@@ -54,6 +67,7 @@ export async function readCredentials(
     for (const [normKey, jsonPath] of Object.entries(credFile.mapping)) {
       if (jsonPath === ".") credentials[normKey] = content;
     }
+    assertRequiredCredentials(credFile, credentials);
     return { credentials: sanitizeCredentials(credentials), grab_data: {} };
   }
 
@@ -90,31 +104,54 @@ export async function readCredentials(
   }
 
   for (const secret of credentialSecrets) {
-    if (secret.backend !== "keytar") continue;
-    const account = interpolateSecretTemplate(secret.account, credentials, grab_data);
-    if (!account) {
-      throw new Error(`System credential store secret account is empty for service=${secret.service}`);
+    if (secret.backend === "keytar") {
+      const account = interpolateSecretTemplate(secret.account, credentials, grab_data);
+      if (!account) {
+        throw new Error(`System credential store secret account is empty for service=${secret.service}`);
+      }
+
+      let password: string | null;
+      try {
+        password = await getKeytarPassword(secret.service, account);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`System credential store unavailable for backend=keytar service=${secret.service}: ${detail}`, { cause: err });
+      }
+
+      if (!password) {
+        throw new Error(`System credential store secret not found: backend=keytar service=${secret.service} account=${account}`);
+      }
+
+      for (const [normKey, source] of Object.entries(secret.mapping)) {
+        if (source === "password") credentials[normKey] = password;
+      }
+      continue;
     }
 
-    let password: string | null;
+    const host = interpolateSecretTemplate(secret.host, credentials, grab_data);
+    const login = interpolateSecretTemplate(secret.login, credentials, grab_data);
+    if (!host || !login) {
+      throw new Error("Copilot token-store identity is missing from config.json");
+    }
+
+    let token: string | null;
     try {
-      password = await getKeytarPassword(secret.service, account);
+      token = await getCopilotToken(filePath, host, login, raw.storeTokenPlaintext === true);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      throw new Error(`System credential store unavailable for backend=keytar service=${secret.service}: ${detail}`, { cause: err });
+      throw new Error(`Copilot token store unavailable: ${detail}`, { cause: err });
     }
-
-    if (!password) {
-      throw new Error(`System credential store secret not found: backend=keytar service=${secret.service} account=${account}`);
+    if (!token) {
+      throw new Error(`Copilot token not found for configured user on ${host}`);
     }
-
     for (const [normKey, source] of Object.entries(secret.mapping)) {
-      if (source === "password") credentials[normKey] = password;
+      if (source === "token") credentials[normKey] = token;
     }
   }
 
   // Apply universal sanitize (treat empty sensitive tokens as absent) after full extraction
   // (mapping + keytar). This is the first defense against poison from CLI refresh failures.
+  assertRequiredCredentials(credFile, credentials);
   const sanitizedCredentials = sanitizeCredentials(credentials);
   return { credentials: sanitizedCredentials, grab_data };
 }

@@ -4,6 +4,9 @@ import {
   enrichClaudeGrabData,
   isClaudeOauthAccountComplete,
 } from "../../src/providers/claude-companion.js";
+import { readFile } from "node:fs/promises";
+import { loadProviderFromString } from "../../src/providers/loader.js";
+import { checkIdentity, extractIdentityFromRaw } from "../../src/core/identity.js";
 
 const ORG = "11111111-2222-3333-4444-555555555555";
 const OTHER_ORG = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -120,5 +123,30 @@ describe("claude companion enrichment", () => {
   it("enrichClaudeGrabData no-ops without organizationUuid", () => {
     const before = { oauthAccount: { emailAddress: "a@b.c" } };
     expect(enrichClaudeGrabData(before, {})).toEqual(before);
+  });
+
+  it("uses current companion identity and a token digest for satellites", async () => {
+    const provider = loadProviderFromString(await readFile("providers/claude.yaml", "utf8"));
+    const raw = {
+      claudeAiOauth: {
+        accessToken: "access",
+        refreshToken: "refresh",
+        expiresAt: 1,
+      },
+    };
+    const grabData = {
+      oauthAccount: {
+        organizationUuid: "org-current",
+        emailAddress: "current@example.test",
+      },
+    };
+    const identity = extractIdentityFromRaw(provider, raw, grabData);
+
+    expect(identity).toMatchObject({
+      "oauthAccount.organizationUuid": "org-current",
+    });
+    expect(identity?.["claudeAiOauth.refreshToken"]).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(checkIdentity(provider, identity, raw, grabData)).toEqual({ ok: true });
+    expect(checkIdentity(provider, identity, raw)).toEqual({ ok: true });
   });
 });

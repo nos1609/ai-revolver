@@ -2,14 +2,14 @@
 #
 # Data sources:
 #   - config file:     ~/.copilot/config.json
-#   - token keychain:  keytar service `copilot-cli`,
-#                      account `https://github.com:<login>`
+#   - token store:     current Copilot CLI runtime; it applies the CLI's own
+#                      system keychain/plaintext fallback policy
 #   - usage REST:      GET https://api.github.com/copilot_internal/user
 #
 # Notes:
 #   • This provider intentionally uses the standalone Copilot CLI config and
-#     keytar store. It does not inspect VS Code SecretStorage or running VS Code
-#     sessions, so `airev usage` stays a plain CLI operation.
+#     bundled token-store runtime. It does not inspect VS Code SecretStorage or
+#     running VS Code sessions, so `airev usage` stays a plain CLI operation.
 #   • The endpoint is read-only and returns personal quota snapshots when the
 #     OAuth token has access.
 
@@ -25,18 +25,23 @@ auth_methods:
       grab_fields:
         - "lastLoggedInUser.host"
         - "lastLoggedInUser.login"
+        - "storeTokenPlaintext"
       permissions: 0o600
       atomic_write: true
       preserve_unknown_fields: true
     credential_secrets:
-      - backend: keytar
-        service: "copilot-cli"
-        account: "${grab_data.lastLoggedInUser.host}:${grab_data.lastLoggedInUser.login}"
+      - backend: copilot-token-store
+        host: "${grab_data.lastLoggedInUser.host}"
+        login: "${grab_data.lastLoggedInUser.login}"
         mapping:
-          access_token: password
+          access_token: token
+
+  api_key:
+    env:
+      COPILOT_GITHUB_TOKEN: "${api_key}"
 
 detection:
-  commands: ["gh"]
+  commands: ["copilot"]
   paths: ["${HOME}/.copilot/"]
 
 usage:

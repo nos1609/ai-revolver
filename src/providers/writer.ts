@@ -3,6 +3,7 @@ import { resolveTemplatePath } from "../platform/index.js";
 import { writeJsonFile, writeBinaryFile, fileExists } from "../platform/fs.js";
 import { pathSegments } from "../core/path.js";
 import { setKeytarPassword } from "./keytar.js";
+import { setCopilotToken } from "./copilot-token-store.js";
 import { readProviderJsonFile } from "./json.js";
 import { sanitizeCredentials, mergeCredentials } from "../core/credential-policy.js";
 import { hasDynamicBucket, resolveBucketPath, detectBucketKey } from "./bucket.js";
@@ -42,6 +43,42 @@ function interpolateSecretTemplate(
   });
 }
 
+function assertRequiredCredentials(
+  credFile: ProviderCredentialFile,
+  credentials: Record<string, unknown>,
+): void {
+  for (const key of credFile.required_credentials ?? []) {
+    const value = credentials[key];
+    if (value == null || (typeof value === "string" && value.trim() === "")) {
+      throw new Error(`Refusing to write credentials without required field: ${key}`);
+    }
+  }
+}
+
+function assertCredentialSecrets(
+  credentialSecrets: ProviderCredentialSecret[],
+  data: ProfileCredentials,
+): void {
+  for (const secret of credentialSecrets) {
+    if (secret.backend === "keytar") {
+      const account = interpolateSecretTemplate(secret.account, data.credentials, data.grab_data);
+      if (!account) throw new Error(`Keytar secret account is empty for service=${secret.service}`);
+    } else {
+      const host = interpolateSecretTemplate(secret.host, data.credentials, data.grab_data);
+      const login = interpolateSecretTemplate(secret.login, data.credentials, data.grab_data);
+      if (!host || !login) {
+        throw new Error("Copilot token-store identity is missing from profile data");
+      }
+    }
+    for (const normalizedKey of Object.keys(secret.mapping)) {
+      const value = data.credentials[normalizedKey];
+      if (value == null || (typeof value === "string" && value.trim() === "")) {
+        throw new Error(`External credential store value is missing: ${normalizedKey}`);
+      }
+    }
+  }
+}
+
 /**
  * Merge-on-write: read existing file, overlay auth fields, write back.
  * Unknown fields are preserved (mcpOAuth etc.).
@@ -56,6 +93,8 @@ export async function writeCredentials(
   targetPath?: string,
 ): Promise<void> {
   const filePath = targetPath ?? resolveTemplatePath(credFile.path);
+  assertRequiredCredentials(credFile, data.credentials);
+  assertCredentialSecrets(credentialSecrets, data);
 
   // binary-passthrough: write the single mapping field whose path is "."
   // as raw UTF-8, overwriting any existing file. No merge, no grab_fields,
@@ -77,6 +116,25 @@ export async function writeCredentials(
     const perms = typeof credFile.permissions === "number" ? credFile.permissions : 0o600;
     await writeBinaryFile(filePath, blob, perms);
     return;
+  }
+
+  // Copilot's runtime writes the token first and then updates account metadata.
+  // Run it before our JSON merge so a token-store failure cannot leave
+  // config.json pointing at an account whose token was not stored.
+  for (const secret of credentialSecrets) {
+    if (secret.backend !== "copilot-token-store") continue;
+    const host = interpolateSecretTemplate(secret.host, data.credentials, data.grab_data);
+    const login = interpolateSecretTemplate(secret.login, data.credentials, data.grab_data);
+    for (const [normKey, target] of Object.entries(secret.mapping)) {
+      if (target !== "token") continue;
+      await setCopilotToken(
+        filePath,
+        host,
+        login,
+        String(data.credentials[normKey]),
+        data.grab_data.storeTokenPlaintext === true,
+      );
+    }
   }
 
   // Read current file (or start empty if first run)
@@ -168,11 +226,10 @@ export async function writeCredentials(
   for (const secret of credentialSecrets) {
     if (secret.backend !== "keytar") continue;
     const account = interpolateSecretTemplate(secret.account, data.credentials, data.grab_data);
-    if (!account) continue;
     for (const [normKey, target] of Object.entries(secret.mapping)) {
       if (target !== "password") continue;
       const value = data.credentials[normKey];
-      if (value !== undefined) await setKeytarPassword(secret.service, account, String(value));
+      await setKeytarPassword(secret.service, account, String(value));
     }
   }
 }

@@ -11,7 +11,11 @@ import { getProfile, isActiveMain } from "../core/registry.js";
 import { openVault } from "../vault/factory.js";
 import { withProfileLock } from "../core/lock.js";
 import { satelliteCredentialPath } from "../core/satellite.js";
-import { checkIdentity, extractIdentityFromRaw } from "../core/identity.js";
+import {
+  checkIdentity,
+  extractIdentityFromProfile,
+  extractIdentityFromRaw,
+} from "../core/identity.js";
 import { resolveTemplatePath } from "../platform/index.js";
 import { fileExists } from "../platform/fs.js";
 import { tr, trf } from "../i18n.js";
@@ -153,7 +157,15 @@ export async function sync(
 
     // ── Identity guard ────────────────────────────────────────
     if (!opts.force) {
-      const check = checkIdentity(provider, vaultEntry.identity, fsRawJson);
+      const derivedVaultIdentity = extractIdentityFromProfile(
+        provider,
+        vaultEntry.credentials,
+        vaultEntry.grab_data,
+      );
+      const vaultIdentity = derivedVaultIdentity || vaultEntry.identity
+        ? { ...derivedVaultIdentity, ...vaultEntry.identity }
+        : undefined;
+      const check = checkIdentity(provider, vaultIdentity, fsRawJson, fsRead.grab_data);
       if (!check.ok) {
         const fixHint = trf(
           `  Если намеренно:\n` +
@@ -179,7 +191,7 @@ export async function sync(
 
     // ── Freshness merge (universal, mtime mandatory for FS side) ─────────────
     // stat the FS credential file to get mtimeMs — this enables sync/status for
-    // providers that do not expose last_refresh (Claude, Gemini etc.).
+    // providers that do not expose last_refresh (Claude, agy, etc.).
     let fsMtime = 0;
     try {
       const fsStat = await stat(fsPath);
@@ -241,7 +253,7 @@ export async function sync(
         profile_id: profile.id,
         credentials: mergedCreds,
         grab_data: fsRead.grab_data,
-        identity: extractIdentityFromRaw(provider, fsRawJson),
+        identity: extractIdentityFromRaw(provider, fsRawJson, fsRead.grab_data),
         last_refresh: fsLastRefresh,
       });
       console.log(chalk.green(

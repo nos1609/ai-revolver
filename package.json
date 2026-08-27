@@ -1,7 +1,15 @@
 {
   "name": "ai-revolver",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Cross-platform CLI profile manager for AI coding tools",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nos1609/ai-revolver.git"
+  },
+  "homepage": "https://github.com/nos1609/ai-revolver#readme",
+  "bugs": {
+    "url": "https://github.com/nos1609/ai-revolver/issues"
+  },
   "type": "module",
   "packageManager": "npm@12.0.1",
   "bin": {

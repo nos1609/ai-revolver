@@ -6,9 +6,10 @@
 - Decide how to render a third quota window without overloading the current two-window `UsageSnapshot`.
 - Add `credits` display only after deciding whether it belongs in `usage` output or a separate detail view.
 
-## Gemini remote quota
+## Google Antigravity remote quota
 
-- Add a non-declarative Gemini flow based on `cloudcode-pa.googleapis.com/v1internal`.
+- Revalidate whether current `agy` uses `cloudcode-pa.googleapis.com/v1internal`.
+- Do not reuse the legacy Gemini CLI quota flow without a current `agy` trace.
 - Prefer `retrieveUserQuota` when a quota project id is already known.
 - Use `loadCodeAssist` only to resolve the managed project id when needed.
 - Parse `buckets[]` by model and prefer `tokenType: REQUESTS` when duplicate buckets exist.

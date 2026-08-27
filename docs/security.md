@@ -64,7 +64,8 @@ credentials уже установленных provider CLIs. Основные у
 - `sync` сравнивает account identity и freshness.
 - Empty sensitive values не перезаписывают непустой `refresh_token`.
 - Forced `sync` требует `--push` или `--pull`.
-- Opaque `qodercli` credential сравнивается полностью, но не выводится.
+- Opaque `qodercli`, `agy` и `qwen` refresh credentials сравниваются по SHA-256
+  digest; исходные значения не входят в identity snapshots и diagnostics.
 
 Эти проверки уменьшают риск, но явный `--force` может обойти identity или
 pre-sync. Перед ним зафиксируй источник, который должен победить, и создай

@@ -206,10 +206,10 @@ airev completion <shell>                 создать shell completion
 
 | Поставщик | OAuth | API key | Формат локальной интеграции | `usage` |
 |---|:---:|:---:|---|:---:|
+| `agy` | да | нет | Google Antigravity OAuth JSON | нет |
 | `claude` | да | да | JSON credentials и companion metadata | да |
 | `codex` | да | да | JSON credentials | да |
-| `copilot` | да | нет | JSONC metadata и внешний keytar secret | да |
-| `gemini` | да | да | JSON credentials и companion metadata | нет |
+| `copilot` | да | да | JSONC metadata и token store текущего CLI | да |
 | `grok` | да | да | JSON с динамическим auth bucket | нет |
 | `qodercli` | да | да | непрозрачный зашифрованный blob | нет |
 | `qwen` | да | да | JSON credentials | нет |

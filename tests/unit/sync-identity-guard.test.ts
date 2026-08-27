@@ -129,10 +129,20 @@ describe("sync identity guard", () => {
     expect(result.resolution).toBe("no-op");
   });
 
-  it("ошибка когда vault entry не имеет identity (legacy entry)", async () => {
+  it("восстанавливает identity из credentials для legacy vault entry", async () => {
     const { sync } = await import("../../src/commands/sync.js");
-    // Vault entry без identity — legacy
     vaultMocks.get.mockResolvedValue({ ...fakeVaultEntry, identity: undefined });
+
+    await expect(sync("codex", "side1")).resolves.toEqual({ resolution: "no-op" });
+  });
+
+  it("блокирует legacy vault entry, когда identity нельзя восстановить", async () => {
+    const { sync } = await import("../../src/commands/sync.js");
+    vaultMocks.get.mockResolvedValue({
+      ...fakeVaultEntry,
+      credentials: { access_token: "tok_a" },
+      identity: undefined,
+    });
 
     await expect(sync("codex", "side1")).rejects.toThrow(/identity.*not recorded|identity.*missing|identity.*не записана/i);
   });

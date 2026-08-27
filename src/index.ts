@@ -20,8 +20,9 @@ import { hasOption, optionValue, parseArgs } from "./cli/args.js";
 import { listProviders } from "./providers/loader.js";
 import { tr, trf } from "./i18n.js";
 import { ExitCode } from "./types/index.js";
+import { packageVersion } from "./version.js";
 
-const VERSION = "0.2.1";
+const VERSION = packageVersion();
 
 const GLOBAL_VERBS = new Set(["list", "status", "usage", "env", "provider", "vault", "export", "import", "completion"]);
 const PROVIDER_VERBS = new Set(["grab", "switch", "rename", "drop", "list", "status", "usage", "render", "sync", "evict"]);

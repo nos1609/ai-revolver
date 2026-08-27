@@ -225,7 +225,7 @@ export async function grab(providerName: string, profileName: string, opts: Grab
         profile_id: profile.id,
         credentials: finalCredentials,
         grab_data: grabData,
-        identity: extractIdentityFromRaw(provider, rawJson),
+        identity: extractIdentityFromRaw(provider, rawJson, grabData),
         last_refresh: lastRefresh || undefined,
       });
       await clearStale(profile.id);
